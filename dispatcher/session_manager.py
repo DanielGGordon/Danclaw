@@ -10,7 +10,12 @@ from __future__ import annotations
 from typing import Optional
 
 from dispatcher.models import StandardMessage
-from dispatcher.repository import Repository, SessionRow, VALID_STATES
+from dispatcher.repository import (
+    ChannelBindingRow,
+    Repository,
+    SessionRow,
+    VALID_STATES,
+)
 
 
 # States considered "live" — sessions the dispatcher should still route to.
@@ -94,6 +99,59 @@ class SessionManager:
         Returns ``None`` if the session does not exist.
         """
         return await self._repo.get_session(session_id)
+
+    async def add_binding(
+        self,
+        session_id: str,
+        channel_type: str,
+        channel_ref: str,
+    ) -> ChannelBindingRow:
+        """Add a channel binding to an existing session.
+
+        Parameters
+        ----------
+        session_id:
+            ID of the session to bind.
+        channel_type:
+            Channel type (e.g. ``"terminal"``, ``"slack"``).
+        channel_ref:
+            Channel-specific reference for routing responses.
+
+        Returns
+        -------
+        ChannelBindingRow
+            The newly created binding.
+
+        Raises
+        ------
+        KeyError
+            If no session with *session_id* exists.
+        aiosqlite.IntegrityError
+            If this exact binding already exists.
+        """
+        session = await self._repo.get_session(session_id)
+        if session is None:
+            raise KeyError(f"Session {session_id!r} not found")
+        return await self._repo.add_channel_binding(
+            session_id, channel_type, channel_ref,
+        )
+
+    async def get_bindings(
+        self, session_id: str,
+    ) -> list[ChannelBindingRow]:
+        """Return all channel bindings for a session.
+
+        Parameters
+        ----------
+        session_id:
+            ID of the session.
+
+        Returns
+        -------
+        list[ChannelBindingRow]
+            All bindings, ordered by creation time.
+        """
+        return await self._repo.get_bindings_for_session(session_id)
 
     async def update_state(
         self, session_id: str, new_state: str,

@@ -164,6 +164,71 @@ async def test_get_session_returns_none_for_missing(mgr):
     assert await mgr.get_session("nonexistent") is None
 
 
+# ── add_binding ──────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_add_binding_to_existing_session(mgr, repo):
+    session = await mgr.get_or_create_session(_msg(), "agent")
+    binding = await mgr.add_binding(session.id, "slack", "#general")
+    assert binding.session_id == session.id
+    assert binding.channel_type == "slack"
+    assert binding.channel_ref == "#general"
+
+
+@pytest.mark.asyncio
+async def test_add_multiple_bindings_to_session(mgr):
+    session = await mgr.get_or_create_session(_msg(), "agent")
+    await mgr.add_binding(session.id, "slack", "#general")
+    await mgr.add_binding(session.id, "slack", "#random")
+    bindings = await mgr.get_bindings(session.id)
+    # 3 total: 1 from creation (terminal/tty1) + 2 added
+    assert len(bindings) == 3
+    channel_refs = {b.channel_ref for b in bindings}
+    assert channel_refs == {"tty1", "#general", "#random"}
+
+
+@pytest.mark.asyncio
+async def test_add_binding_nonexistent_session_raises(mgr):
+    with pytest.raises(KeyError, match="not found"):
+        await mgr.add_binding("nonexistent", "slack", "#general")
+
+
+@pytest.mark.asyncio
+async def test_add_duplicate_binding_raises(mgr):
+    session = await mgr.get_or_create_session(_msg(), "agent")
+    import aiosqlite
+    with pytest.raises(aiosqlite.IntegrityError):
+        await mgr.add_binding(session.id, "terminal", "tty1")
+
+
+# ── get_bindings ─────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_get_bindings_returns_all_for_session(mgr):
+    session = await mgr.get_or_create_session(_msg(), "agent")
+    await mgr.add_binding(session.id, "slack", "#general")
+    bindings = await mgr.get_bindings(session.id)
+    assert len(bindings) == 2
+
+
+@pytest.mark.asyncio
+async def test_get_bindings_empty_for_no_bindings(mgr, repo):
+    # Create a session directly via repo (no automatic binding)
+    session = await repo.create_session("agent", session_id="bare")
+    bindings = await mgr.get_bindings("bare")
+    assert bindings == []
+
+
+@pytest.mark.asyncio
+async def test_lookup_session_by_added_binding(mgr, repo):
+    """A session can be found via a binding added after creation."""
+    session = await mgr.get_or_create_session(_msg(), "agent")
+    await mgr.add_binding(session.id, "slack", "#general")
+    found = await repo.find_session_by_channel("slack", "#general")
+    assert found is not None
+    assert found.id == session.id
+
+
 # ── update_state: valid transitions ──────────────────────────────────
 
 @pytest.mark.asyncio
