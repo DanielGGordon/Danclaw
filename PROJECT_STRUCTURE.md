@@ -14,7 +14,8 @@ danclaw/
 ├── Dockerfile                # Container image for the dispatcher service
 ├── docker-compose.yml        # Multi-service orchestration with SQLite volume and .env
 ├── config/
-│   ├── __init__.py           # Python package marker
+│   ├── __init__.py           # Re-exports load_config, DanClawConfig, AgentConfig, ConfigError
+│   ├── loader.py             # Config loader: reads, validates, returns structured config
 │   ├── danclaw.json          # Main config: agent definitions, listener settings
 │   └── README.md             # Module documentation
 ├── dispatcher/
