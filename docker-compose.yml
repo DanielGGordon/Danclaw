@@ -1,0 +1,13 @@
+services:
+  dispatcher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    volumes:
+      - sqlite-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  sqlite-data:
