@@ -20,6 +20,7 @@ danclaw/
 │   └── README.md             # Module documentation
 ├── dispatcher/
 │   ├── __init__.py           # Python package marker
+│   ├── __main__.py           # Entry point: config loading, signal handling, async loop
 │   └── README.md             # Module documentation
 ├── listeners/
 │   ├── __init__.py           # Python package marker

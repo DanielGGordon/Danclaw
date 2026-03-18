@@ -14,6 +14,17 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
 - **Uses**: `config` (agent definitions, permissions), `personas` (system prompts), `tools` (per-agent tool access)
 - **Stores to**: SQLite database (sessions, messages, telemetry)
 
+## Entry Point
+
+Run with `python -m dispatcher`. The `__main__.py` module:
+
+1. Sets up Python logging (INFO level, stderr)
+2. Loads the JSON config via `config.load_config()`
+3. Logs readiness with agent count
+4. Installs signal handlers for SIGTERM and SIGINT
+5. Runs an asyncio event loop that waits for a shutdown signal
+6. Logs clean shutdown on exit
+
 ## Status
 
-Scaffold only. No dispatcher logic implemented yet.
+Dispatcher starts, loads config, logs readiness, and shuts down cleanly on signal. No routing or session logic yet.
