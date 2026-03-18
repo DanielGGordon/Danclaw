@@ -63,7 +63,7 @@ The core dispatcher loop: accept a StandardMessage, find or create a session, ro
 - [x] Dispatcher accepts a StandardMessage, routes through session manager → executor → stores result → returns response
 - [x] Messages persist across process restarts (SQLite on disk)
 - [x] Sessions persist across process restarts and resume correctly
-- [ ] Integration test: send a message, get a response, send a follow-up, verify session continuity
+- [x] Integration test: send a message, get a response, send a follow-up, verify session continuity
 
 ---
 
@@ -77,7 +77,7 @@ A terminal-based listener that connects to the dispatcher via Unix domain socket
 
 ### Acceptance criteria
 
-- [ ] Dispatcher listens on a Unix domain socket, accepts StandardMessage JSON, returns response JSON
+- [x] Dispatcher listens on a Unix domain socket, accepts StandardMessage JSON, returns response JSON
 - [ ] `agent chat` command starts an interactive session — type a message, see the response, repeat
 - [ ] `agent chat` creates a new session on first message, reuses it for subsequent messages
 - [ ] `agent list` command shows active sessions with their IDs and states
