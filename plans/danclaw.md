@@ -37,7 +37,7 @@ Set up the project structure, dependency management, Docker Compose configuratio
 - [x] Docker Compose file with a dispatcher service, SQLite volume mount, and `.env` file for secrets
 - [x] `.env.example` with placeholder keys (`SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `CLAUDE_API_KEY`)
 - [x] JSON config file with a minimal agent definition (name, persona, backend preference)
-- [ ] Config loader that reads and validates the JSON config at startup
+- [x] Config loader that reads and validates the JSON config at startup
 - [ ] Dispatcher process starts, loads config, logs readiness, and exits cleanly on shutdown
 - [ ] `docker-compose up` builds and runs successfully
 - [ ] `.gitignore` excludes `.env`, SQLite files, `__pycache__`, etc.
