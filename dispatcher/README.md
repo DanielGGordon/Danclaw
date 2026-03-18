@@ -11,9 +11,13 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
   - Messages: `save_message`, `get_messages_for_session`
   - Channel bindings: `add_channel_binding`, `get_bindings_for_session`, `find_session_by_channel`
 - Row dataclasses: `SessionRow`, `MessageRow`, `ChannelBindingRow` — frozen dataclasses for type-safe query results.
+- `SessionManager(repo)` — high-level session lifecycle manager wrapping the repository. Methods:
+  - `get_or_create_session(message, agent_name)` — finds a live session by explicit ID or channel binding, or creates a new one
+  - `get_session(session_id)` — retrieves a session by ID
+  - `update_state(session_id, new_state)` — transitions session state with validation of allowed transitions
+  - `list_active_sessions()` — returns all ACTIVE and WAITING_FOR_HUMAN sessions
 - Accepts `StandardMessage` via Unix domain socket or HTTP
 - Returns response messages to the calling listener
-- Manages session lifecycle (create, resume, close)
 
 ## Relationship to Other Modules
 
@@ -34,4 +38,4 @@ Run with `python -m dispatcher`. The `__main__.py` module:
 
 ## Status
 
-Dispatcher starts, loads config, logs readiness, and shuts down cleanly on signal. SQLite schema initialisation (`init_db`) and repository abstraction layer (`Repository`) are available. No routing or session logic yet.
+Dispatcher starts, loads config, logs readiness, and shuts down cleanly on signal. SQLite schema initialisation (`init_db`), repository abstraction layer (`Repository`), and session lifecycle manager (`SessionManager`) are available. No routing or executor logic yet.
