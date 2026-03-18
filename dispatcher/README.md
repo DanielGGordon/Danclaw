@@ -16,6 +16,9 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
   - `get_session(session_id)` — retrieves a session by ID
   - `update_state(session_id, new_state)` — transitions session state with validation of allowed transitions
   - `list_active_sessions()` — returns all ACTIVE and WAITING_FOR_HUMAN sessions
+- `Executor` — protocol (typing.Protocol) defining the async `execute(message) -> ExecutorResult` interface that all executor implementations must satisfy.
+- `ExecutorResult` — frozen dataclass with `content` (response text) and `backend` (name of the backend that produced it).
+- `MockExecutor(fixed_response=None)` — executor that returns canned responses. Echoes input by default (`"mock response: <content>"`); returns a fixed string when `fixed_response` is provided.
 - Accepts `StandardMessage` via Unix domain socket or HTTP
 - Returns response messages to the calling listener
 
@@ -38,4 +41,4 @@ Run with `python -m dispatcher`. The `__main__.py` module:
 
 ## Status
 
-Dispatcher starts, loads config, logs readiness, and shuts down cleanly on signal. SQLite schema initialisation (`init_db`), repository abstraction layer (`Repository`), and session lifecycle manager (`SessionManager`) are available. No routing or executor logic yet.
+Dispatcher starts, loads config, logs readiness, and shuts down cleanly on signal. SQLite schema initialisation (`init_db`), repository abstraction layer (`Repository`), session lifecycle manager (`SessionManager`), and mocked executor (`MockExecutor`) are available. No routing logic yet; the real AI executor backends (claude, codex) are planned for Phase 6.
