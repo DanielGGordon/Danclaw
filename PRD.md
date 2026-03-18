@@ -2,80 +2,124 @@
 
 ## Problem Statement
 
-I want a personal AI agent system running on my Raspberry Pi 5 that I can talk to from multiple channels — Slack, terminal (SSH), phone calls, and eventually a web/mobile GUI. The system should support bidirectional, multi-turn conversations where the agent can ask clarifying questions before taking action. Different users (me, friends, collaborators) should be able to interact with the system through various channels, each with scoped permissions and capabilities. I need this to be transparent, cost-effective, and fully under my control — not a black box SaaS product.
+I want a personal AI agent system running on my Raspberry Pi 5 that I can talk to from any communication channel — Slack, terminal (SSH), phone calls, SMS, WhatsApp, a Chrome extension, ChatGPT via MCP, and eventually a web/mobile GUI. The system should support bidirectional, multi-turn conversations where the agent can ask clarifying questions before taking action. Different users (me, friends, collaborators) should be able to interact with the system through various channels, each with scoped permissions and capabilities. The architecture must be extensible so that adding a new communication channel requires only writing a listener — no changes to the dispatcher, agents, or core logic. Slack → Obsidian is use case #1, not the entire product. I need this to be transparent, cost-effective, reproducible by others, and fully under my control — not a black box SaaS product.
 
 ## Solution
 
 A session-centric multi-agent platform that runs on a dedicated Raspberry Pi 5 (8GB), accessible via Tailscale. The system is composed of:
 
-- **Listeners** that receive messages from external channels (Slack, terminal, phone/SMS)
-- **A dispatcher** that routes messages to the correct session and agent
+- **Listeners** that receive messages from external channels (Slack, terminal, phone/SMS, WhatsApp, Chrome extension, MCP, and any future channel) — all implementing a common listener interface
+- **A dispatcher** that routes messages to the correct session and agent, completely channel-agnostic
 - **Agents** defined in config, each with their own persona, tools, and permission boundaries
 - **A session manager** that maintains multi-turn conversation state, supports channel bridging (start in Slack, pick up on terminal), and persists across reboots
 - **An executor layer** that runs Claude Code (`claude -p`) as the primary AI backend with OpenAI Codex CLI as a configurable fallback
 - **Tool scripts** that give agents real-world capabilities (Obsidian, Slack messaging, phone calls via Twilio + ElevenLabs, etc.)
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      LISTENERS                              │
-│                                                             │
-│  ┌────────────┐  ┌──────────────┐  ┌─────────────────────┐ │
-│  │ Slack Bot   │  │ Terminal/SSH  │  │ Twilio Phone/SMS    │ │
-│  │ (Socket Mode)│  │ (Unix Socket) │  │ (Webhook Listener)  │ │
-│  └──────┬─────┘  └──────┬───────┘  └──────────┬──────────┘ │
-│         │               │                      │            │
-└─────────┼───────────────┼──────────────────────┼────────────┘
-          │               │                      │
-          ▼               ▼                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      DISPATCHER                             │
-│                                                             │
-│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐ │
-│  │ Session      │  │ Permission   │  │ Agent              │ │
-│  │ Manager      │  │ Resolver     │  │ Router             │ │
-│  │              │  │              │  │                    │ │
-│  │ - find/create│  │ - channel    │  │ - match request to │ │
-│  │   sessions   │  │   perms      │  │   agent definition │ │
-│  │ - track state│  │ - user perms │  │ - spawn/resume     │ │
-│  │ - bridge     │  │ - override   │  │   agent process    │ │
-│  │   channels   │  │   flags      │  │                    │ │
-│  └──────┬──────┘  └──────┬───────┘  └──────────┬─────────┘ │
-│         │               │                      │            │
-└─────────┼───────────────┼──────────────────────┼────────────┘
-          │               │                      │
-          ▼               ▼                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    SESSION STORE (SQLite)                    │
-│                                                             │
-│  Sessions | Messages | Channel Bindings | Event Log         │
-│                                                             │
-│  (Local-first, swappable backend, archival-ready)           │
-└─────────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      EXECUTOR LAYER                         │
-│                                                             │
-│  ┌─────────────────────┐  ┌──────────────────────────────┐ │
-│  │ claude -p --resume   │  │ codex (fallback)             │ │
-│  │                      │  │                              │ │
-│  │ Primary backend      │◄─┤ Activated on credit exhaust, │ │
-│  │ Session persistence  │  │ timeout, or config preference│ │
-│  └──────────┬───────────┘  └──────────────────────────────┘ │
-│             │                                               │
-└─────────────┼───────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                          LISTENERS                                   │
+│       All listeners implement the same interface:                    │
+│       receive() → StandardMessage, send(response) → channel         │
+│                                                                      │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐ │
+│  │ Slack    │ │Terminal/ │ │ Twilio   │ │ WhatsApp │ │ Future:   │ │
+│  │ (Socket  │ │ SSH      │ │ Phone/   │ │ (Webhook)│ │ Chrome,   │ │
+│  │  Mode)   │ │ (Unix    │ │ SMS      │ │          │ │ MCP,      │ │
+│  │          │ │  Socket) │ │ (Webhook)│ │          │ │ Email,    │ │
+│  │          │ │          │ │          │ │          │ │ Telegram..│ │
+│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘ └─────┬─────┘ │
+│       │            │            │            │              │       │
+└───────┼────────────┼────────────┼────────────┼──────────────┼───────┘
+        │            │            │            │              │
+        ▼            ▼            ▼            ▼              ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                    INTERNAL API (Channel-Agnostic)                    │
+│         Unix Socket (local) + HTTP (webhook-based listeners)         │
+│         Accepts/returns StandardMessage format only                   │
+└──────────────────────────────┬───────────────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                          DISPATCHER                                  │
+│                                                                      │
+│  ┌──────────────┐  ┌───────────────┐  ┌───────────────────────────┐ │
+│  │ Session       │  │ Permission    │  │ Agent                     │ │
+│  │ Manager       │  │ Resolver      │  │ Router                    │ │
+│  │               │  │               │  │                           │ │
+│  │ - find/create │  │ - channel     │  │ - match request to agent  │ │
+│  │   sessions    │  │   perms       │  │   definition              │ │
+│  │ - track state │  │ - user perms  │  │ - spawn/resume agent      │ │
+│  │ - bridge      │  │ - override    │  │   process                 │ │
+│  │   channels    │  │   flags       │  │                           │ │
+│  └──────┬───────┘  └──────┬────────┘  └────────────┬──────────────┘ │
+│         │                 │                         │                │
+└─────────┼─────────────────┼─────────────────────────┼────────────────┘
+          │                 │                         │
+          ▼                 ▼                         ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                     SESSION STORE (SQLite)                            │
+│                                                                      │
+│  Sessions | Messages | Channel Bindings | Event Log                  │
+│                                                                      │
+│  (Local-first, swappable backend, archival-ready)                    │
+└──────────────────────────────┬───────────────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                       EXECUTOR LAYER                                 │
+│                                                                      │
+│  ┌──────────────────────┐  ┌───────────────────────────────────────┐ │
+│  │ claude -p --resume    │  │ codex (fallback)                     │ │
+│  │                       │  │                                      │ │
+│  │ Primary backend       │◄─┤ Activated on credit exhaust,         │ │
+│  │ Session persistence   │  │ timeout, or config preference        │ │
+│  └──────────┬────────────┘  └───────────────────────────────────────┘ │
+│             │                                                        │
+└─────────────┼────────────────────────────────────────────────────────┘
               │
               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                        TOOLS                                │
-│                                                             │
-│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌──────────┐ │
-│  │ Obsidian   │ │ Slack Send │ │ Twilio +   │ │ Git/     │ │
-│  │ (vault r/w)│ │            │ │ ElevenLabs │ │ Deploy   │ │
-│  └────────────┘ └────────────┘ └────────────┘ └──────────┘ │
-│                                                             │
-│  Each tool is a standalone script, registered per-agent     │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                           TOOLS                                      │
+│                                                                      │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐ │
+│  │ Obsidian │ │ Slack    │ │ Twilio + │ │ Git/     │ │ Future:   │ │
+│  │ (vault   │ │ Send     │ │ Eleven   │ │ Deploy   │ │ Calendar, │ │
+│  │  r/w)    │ │          │ │ Labs     │ │          │ │ Email,    │ │
+│  │          │ │          │ │          │ │          │ │ Any API...│ │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └───────────┘ │
+│                                                                      │
+│  Each tool is a standalone script, registered per-agent              │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### Listener Interface Contract
+
+Every listener — current and future — implements the same contract. The dispatcher and agents know nothing about Slack, Twilio, or any specific channel. All channel-specific logic lives in the listener.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                   LISTENER CONTRACT                           │
+│                                                              │
+│  Every listener must:                                        │
+│                                                              │
+│  1. Receive a message from the outside world                 │
+│  2. Translate it to a StandardMessage:                       │
+│     - source (e.g., "slack", "terminal", "phone")            │
+│     - channel_ref (e.g., Slack thread_ts, terminal tty)      │
+│     - user_id                                                │
+│     - content (text, or transcribed audio)                   │
+│     - session_id (if resuming an existing conversation)      │
+│  3. Send it to the dispatcher via Unix socket or HTTP        │
+│  4. Receive agent responses and translate back to the        │
+│     channel's native format                                  │
+│                                                              │
+│  Adding a new channel = write a listener + register in       │
+│  config. No dispatcher or agent changes needed.              │
+│                                                              │
+│  Known future listeners:                                     │
+│  Slack, Terminal, Phone, SMS, WhatsApp, Chrome Extension,    │
+│  ChatGPT (MCP server), Email, Telegram, Calendar, Webhooks  │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ### Permission Model
@@ -175,18 +219,40 @@ A session-centric multi-agent platform that runs on a dedicated Raspberry Pi 5 (
 24. As the system owner, I want all secrets (API keys, tokens) loaded from a secure env file by systemd and never exposed in prompts or logs, so that credentials stay safe.
 25. As the system owner, I want nothing exposed to the public internet — all access goes through Tailscale, so that the attack surface is minimal.
 26. As the system owner, I want sessions to start as 1 human + 1 agent, with the architecture designed to support multi-human sessions later, so that I don't have to rearchitect for collaboration.
+27. As someone reproducing this setup, I want to clone the repo and run `docker-compose up` to get the full system running, so that I don't need to manually install dependencies or configure systemd.
+28. As the system owner, I want to add a new communication channel (e.g., WhatsApp, Telegram, email) by writing a listener that implements the standard interface and registering it in config, without modifying the dispatcher or agents.
+29. As the system owner, I want the dispatcher to be completely channel-agnostic — it only sees StandardMessage objects, never Slack threads or Twilio SIDs — so that the core logic never needs to change when channels are added.
+30. As a ChatGPT user, I want to interact with DanClaw through an MCP server so that I can use ChatGPT as a frontend while DanClaw handles execution (future listener).
+31. As a Chrome extension user, I want to send requests to DanClaw from my browser and receive responses, so that I can trigger agent actions from any webpage (future listener).
 
 ## Implementation Decisions
 
 ### Architecture
 - **Session-centric dispatcher** with an event log pattern: every message and action is an append-only event, making the DB the single source of truth for all activity.
-- **Unix sockets** for local inter-process communication between listeners and the dispatcher. Zero network config, filesystem permissions for auth.
+- **Internal API**: Unix sockets for local IPC (terminal, cron) + lightweight HTTP server (aiohttp) for webhook-based listeners (Twilio, WhatsApp, Chrome extension, future MCP). Both accept the same StandardMessage format.
 - **Systemd services** for all long-running processes (listeners, dispatcher). Auto-restart, logging, boot survival.
-- **Tailscale only** for network access. No ports exposed to the public internet.
+- **Docker Compose** for reproducible deployment. Anyone can clone the repo and `docker-compose up` to run the full system. Development can be done natively on the Pi for faster iteration; Docker is the deployment and distribution mechanism.
+- **Tailscale only** for network access. No ports exposed to the public internet. Tailscale Funnel used selectively for inbound webhooks (Twilio, WhatsApp) that require a public URL.
+
+### Tech Stack
+- **Language**: Python 3.11+ — async-first, rich ecosystem for Slack/Twilio/ElevenLabs SDKs, stdlib SQLite.
+- **Async runtime**: `asyncio` — single-process cooperative concurrency for the dispatcher. Handles multiple concurrent sessions without threading overhead.
+- **Slack**: `slack-bolt` in Socket Mode (no inbound webhooks needed, works behind NAT/Tailscale).
+- **Phone/SMS**: `twilio` Python SDK for telephony and SMS.
+- **Voice synthesis**: `elevenlabs` Python SDK for generating speech on phone calls.
+- **Database**: `sqlite3` (stdlib) with `aiosqlite` for async access. Repository pattern abstraction for future backend swapability — no ORM.
+- **Internal HTTP**: `aiohttp` — lightweight async HTTP server for webhook-based listeners only. Not a full web framework.
+- **AI executor**: `subprocess` shelling out to `claude -p` and `codex` CLI. No embedded SDKs — keeps the AI layer swappable and transparent.
+- **Config**: JSON files loaded at startup.
+- **Secrets**: systemd EnvironmentFile (native) or Docker secrets (containerized). Never in config or prompts.
+- **Obsidian**: Direct file read/write via `pathlib` (exact approach TBD during implementation).
+- **Containerization**: Docker Compose with one container per service (dispatcher, each listener). SQLite on a volume mount for persistence.
+- **Process management**: systemd for native deployment, Docker Compose for containerized deployment.
+- **Terminal bridge**: `socat` + a small Python CLI (`agent` command) for attaching to sessions via SSH.
 
 ### Agent Configuration
 - Agents are first-class entities defined in a central JSON config. Each agent definition includes: name, persona (system prompt), allowed tools, AI backend preference (ordered list, e.g., `["claude", "codex"]`), and permission boundaries.
-- Listeners are configured in their own section of the config, mapping to which agents they can invoke.
+- Listeners are configured in their own section of the config, mapping to which agents they can invoke. Each listener type (Slack, Twilio, terminal, etc.) has its own config block with channel-specific settings.
 - Personas are markdown files in a `personas/` directory, referenced by name in agent config. A channel can switch between personas at runtime.
 
 ### Permission Model (Three Layers)
@@ -251,9 +317,10 @@ A good test for this system verifies **external behavior through the interfaces*
 
 - **Web or mobile GUI** — the system will be designed to support a future GUI (all events in the DB), but building the GUI is not part of this PRD.
 - **Multi-human sessions** — architecture will support this later, but initial implementation is 1 human + 1 agent per session.
-- **MCP server integration** — Obsidian and other tools are accessed via CLI/scripts, not MCP.
+- **MCP server listener** — ChatGPT-as-frontend via MCP is a future listener, not initial scope.
+- **Chrome extension listener** — future listener, not initial scope.
+- **WhatsApp/Telegram/Email listeners** — future listeners, not initial scope. Architecture supports adding them.
 - **Remote CI/CD pipeline** — deploys are triggered locally via script.
-- **Email listener** — not in initial scope, but the architecture supports adding it as a new listener.
 - **External database migration** — SQLite is the initial backend; migration to an external DB is a future effort.
 
 ## Stretch Goals (Low Priority)
@@ -266,5 +333,6 @@ A good test for this system verifies **external behavior through the interfaces*
 - The project name is **DanClaw** (a play on the "OpenClaw" alternative mentioned in the source video).
 - The system philosophy is "glass box, not black box" — every component is readable, debuggable, and replaceable.
 - The config-driven design means most changes (adding agents, tools, channels, permissions) require zero code changes — just config edits and service restarts.
-- The Unix socket + systemd + filesystem approach is deliberately chosen to minimize dependencies on a Pi. No Docker, no Kubernetes, no cloud services beyond Tailscale.
-- Future listeners (email, webhooks, calendar, SMS) should follow the same pattern: a systemd service that writes to the dispatcher's Unix socket.
+- Docker Compose is the deployment and distribution mechanism. Native systemd is an alternative for direct Pi development.
+- The listener interface is the primary extensibility point. Adding a new communication channel (WhatsApp, Telegram, email, Chrome, MCP, etc.) requires only writing a listener that translates to/from StandardMessage — zero changes to dispatcher, agents, or tools.
+- Slack → Obsidian is use case #1, chosen to prove the full architecture end-to-end. The system is designed for many listeners and many tools from the start.
