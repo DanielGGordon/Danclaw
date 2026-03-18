@@ -62,7 +62,7 @@ The core dispatcher loop: accept a StandardMessage, find or create a session, ro
 - [x] Mocked executor that returns a canned response (e.g., echoes the input or returns a fixed string)
 - [x] Dispatcher accepts a StandardMessage, routes through session manager → executor → stores result → returns response
 - [x] Messages persist across process restarts (SQLite on disk)
-- [ ] Sessions persist across process restarts and resume correctly
+- [x] Sessions persist across process restarts and resume correctly
 - [ ] Integration test: send a message, get a response, send a follow-up, verify session continuity
 
 ---
