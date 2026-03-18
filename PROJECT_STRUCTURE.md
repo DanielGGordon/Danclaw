@@ -1,0 +1,46 @@
+# Project Structure
+
+```
+danclaw/
+├── README.md                 # Project overview, architecture, getting started
+├── PROJECT_STRUCTURE.md      # This file — directory layout and module descriptions
+├── PRD.md                    # Product requirements document
+├── plans/
+│   └── danclaw.md            # Implementation plan with phases and acceptance criteria
+├── .env.example              # Environment variable template (secrets placeholder)
+├── .env                      # Actual secrets (git-ignored)
+├── .gitignore                # Git ignore rules
+├── config/
+│   ├── __init__.py           # Python package marker
+│   └── README.md             # Module documentation
+├── dispatcher/
+│   ├── __init__.py           # Python package marker
+│   └── README.md             # Module documentation
+├── listeners/
+│   ├── __init__.py           # Python package marker
+│   └── README.md             # Module documentation
+├── personas/
+│   └── README.md             # Module documentation
+├── tools/
+│   ├── __init__.py           # Python package marker
+│   └── README.md             # Module documentation
+└── tests/                    # Test suite
+```
+
+## Module Descriptions
+
+- **config/**: Configuration loading and validation. Reads JSON config defining agents, listeners, permissions.
+- **dispatcher/**: Core message routing, session management, permission checks, AI executor invocation.
+- **listeners/**: Channel adapters (terminal, Slack, Twilio) that translate to/from StandardMessage.
+- **personas/**: Markdown files used as system prompts for agents. Referenced by name in config.
+- **tools/**: Standalone scripts invokable by agents, registered per-agent in config.
+- **tests/**: All test files. Mirrors the source module structure.
+- **plans/**: Implementation plans and task tracking.
+
+## Data Flow
+
+```
+External Channel → Listener → StandardMessage → Dispatcher → Agent (AI Executor) → Response
+                                                    ↕
+                                              SQLite (sessions, messages)
+```
