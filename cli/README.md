@@ -30,6 +30,19 @@ python -m cli.agent list [--socket /path/to/socket]
 - Displays session IDs, agent names, states, and creation times in a formatted table.
 - Shows "No sessions found." when no sessions exist.
 
+### `agent attach <session-id>`
+
+Attach to an existing session and show its message history.
+
+```bash
+python -m cli.agent attach <session-id> [--socket /path/to/socket]
+```
+
+- Connects to the dispatcher's Unix domain socket and sends a `get_history` request.
+- Displays the full message history for the session (user and agent messages).
+- Enters the interactive chat loop bound to that session for continuing the conversation.
+- Shows an error if the session ID does not exist.
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -40,4 +53,4 @@ python -m cli.agent list [--socket /path/to/socket]
 ## Module Layout
 
 - `__init__.py` — Package marker.
-- `agent.py` — `agent` command with `chat` and `list` subcommands. Contains `chat()`, `list_sessions()`, `_format_sessions_table()`, `_connect()`, `_send_recv()`, `_build_message()`, and `main()`.
+- `agent.py` — `agent` command with `chat`, `list`, and `attach` subcommands. Contains `chat()`, `list_sessions()`, `attach()`, `_chat_loop()`, `_format_sessions_table()`, `_format_history()`, `_connect()`, `_send_recv()`, `_build_message()`, and `main()`.

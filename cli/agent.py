@@ -8,14 +8,19 @@ Subcommands
     loop continues until the user types "exit" or presses Ctrl+C.
 
 ``agent list``
-    List active sessions from the dispatcher.  Connects to the Unix domain
+    List all sessions from the dispatcher.  Connects to the Unix domain
     socket, sends a ``list_sessions`` request, and displays the results as
     a formatted table.
+
+``agent attach <session-id>``
+    Attach to an existing session.  Retrieves and displays the message
+    history, then enters the chat loop bound to that session.
 
 Usage::
 
     python -m cli.agent chat [--socket /path/to/socket]
     python -m cli.agent list [--socket /path/to/socket]
+    python -m cli.agent attach <session-id> [--socket /path/to/socket]
 """
 
 from __future__ import annotations
@@ -104,16 +109,24 @@ def _send_recv(sock: socket.socket, message: dict) -> dict:
     return json.loads(response_line)
 
 
-def chat(socket_path: str, *, input_fn=None, print_fn=None) -> None:
-    """Run the interactive chat loop.
+def _chat_loop(
+    sock,
+    *,
+    session_id: str | None = None,
+    input_fn=None,
+    print_fn=None,
+) -> None:
+    """Run the interactive chat read-eval-print loop.
 
     Parameters
     ----------
-    socket_path:
-        Path to the dispatcher's Unix domain socket.
+    sock:
+        A connected Unix domain socket.
+    session_id:
+        If provided, messages are bound to this session.  Updated with
+        the server's returned session_id after the first exchange.
     input_fn:
         Callable for reading user input (default: builtin ``input``).
-        Accepts a prompt string and returns the user's input.
     print_fn:
         Callable for printing output (default: builtin ``print``).
     """
@@ -122,14 +135,7 @@ def chat(socket_path: str, *, input_fn=None, print_fn=None) -> None:
     if print_fn is None:
         print_fn = print
 
-    sock = _connect(socket_path)
-    # Use a stable channel_ref for the whole session so the dispatcher
-    # can bind consecutive messages to the same session.
     channel_ref = f"cli-{uuid.uuid4().hex[:8]}"
-    session_id: str | None = None
-
-    print_fn(f"Connected to dispatcher at {socket_path}")
-    print_fn('Type a message and press Enter. Type "exit" or press Ctrl+C to quit.\n')
 
     try:
         while True:
@@ -168,6 +174,120 @@ def chat(socket_path: str, *, input_fn=None, print_fn=None) -> None:
                 print_fn(f"error> {resp.get('error', 'unknown error')}\n")
     except KeyboardInterrupt:
         print_fn("\nGoodbye.")
+
+
+def chat(socket_path: str, *, input_fn=None, print_fn=None) -> None:
+    """Run the interactive chat loop.
+
+    Parameters
+    ----------
+    socket_path:
+        Path to the dispatcher's Unix domain socket.
+    input_fn:
+        Callable for reading user input (default: builtin ``input``).
+        Accepts a prompt string and returns the user's input.
+    print_fn:
+        Callable for printing output (default: builtin ``print``).
+    """
+    if input_fn is None:
+        input_fn = input
+    if print_fn is None:
+        print_fn = print
+
+    sock = _connect(socket_path)
+    try:
+        print_fn(f"Connected to dispatcher at {socket_path}")
+        print_fn('Type a message and press Enter. Type "exit" or press Ctrl+C to quit.\n')
+        _chat_loop(sock, input_fn=input_fn, print_fn=print_fn)
+    finally:
+        sock.close()
+
+
+def _format_history(messages: list[dict]) -> str:
+    """Format message history for display.
+
+    Parameters
+    ----------
+    messages:
+        Each dict must have ``role``, ``content``, ``source``, ``user_id``,
+        and ``created_at`` keys.
+
+    Returns
+    -------
+    str
+        A formatted history string with one line per message, using
+        ``you>`` for user messages and ``agent>`` for assistant messages.
+        Returns an empty string if the list is empty.
+    """
+    if not messages:
+        return ""
+
+    lines: list[str] = []
+    for m in messages:
+        if m["role"] == "user":
+            lines.append(f"you> {m['content']}")
+        else:
+            lines.append(f"agent> {m['content']}")
+    return "\n".join(lines)
+
+
+def attach(
+    socket_path: str,
+    session_id: str,
+    *,
+    input_fn=None,
+    print_fn=None,
+) -> None:
+    """Attach to an existing session, display history, then enter chat loop.
+
+    Parameters
+    ----------
+    socket_path:
+        Path to the dispatcher's Unix domain socket.
+    session_id:
+        The ID of the session to attach to.
+    input_fn:
+        Callable for reading user input (default: builtin ``input``).
+    print_fn:
+        Callable for printing output (default: builtin ``print``).
+    """
+    if input_fn is None:
+        input_fn = input
+    if print_fn is None:
+        print_fn = print
+
+    sock = _connect(socket_path)
+    try:
+        # Fetch message history
+        try:
+            resp = _send_recv(sock, {
+                "type": "get_history",
+                "session_id": session_id,
+            })
+        except ConnectionError as exc:
+            print_fn(f"Connection lost: {exc}")
+            return
+
+        if not resp.get("ok"):
+            print_fn(f"Error: {resp.get('error', 'unknown error')}")
+            return
+
+        # Display history
+        history = _format_history(resp.get("messages", []))
+        if history:
+            print_fn(f"--- Session {session_id} history ---")
+            print_fn(history)
+            print_fn(f"--- End of history ---\n")
+        else:
+            print_fn(f"Session {session_id} has no messages.\n")
+
+        print_fn('Type a message and press Enter. Type "exit" or press Ctrl+C to quit.\n')
+        _chat_loop(
+            sock,
+            session_id=session_id,
+            input_fn=input_fn,
+            print_fn=print_fn,
+        )
     finally:
         sock.close()
 
@@ -268,6 +388,20 @@ def main(argv: list[str] | None = None) -> None:
         help=f"Path to the dispatcher Unix domain socket (default: {DEFAULT_SOCKET_PATH})",
     )
 
+    attach_parser = subparsers.add_parser(
+        "attach",
+        help="Attach to an existing session and show its history.",
+    )
+    attach_parser.add_argument(
+        "session_id",
+        help="ID of the session to attach to.",
+    )
+    attach_parser.add_argument(
+        "--socket",
+        default=DEFAULT_SOCKET_PATH,
+        help=f"Path to the dispatcher Unix domain socket (default: {DEFAULT_SOCKET_PATH})",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command is None:
@@ -278,6 +412,8 @@ def main(argv: list[str] | None = None) -> None:
         chat(args.socket)
     elif args.command == "list":
         list_sessions(args.socket)
+    elif args.command == "attach":
+        attach(args.socket, args.session_id)
 
 
 if __name__ == "__main__":

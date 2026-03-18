@@ -6,7 +6,7 @@ the response as JSON.
 
 Protocol
 --------
-Each request is a single line of JSON (newline-terminated).  Two request
+Each request is a single line of JSON (newline-terminated).  Three request
 types are supported:
 
 1. **StandardMessage dispatch** — a JSON object with ``source``,
@@ -20,7 +20,14 @@ types are supported:
        {"ok": true, "sessions": [{"id": "...", "agent_name": "...",
            "state": "...", "created_at": "..."}]}
 
-Error response (for either type)::
+3. **Get history** — ``{"type": "get_history", "session_id": "..."}``
+   Response::
+
+       {"ok": true, "session_id": "...", "messages": [
+           {"role": "...", "content": "...", "source": "...",
+            "user_id": "...", "created_at": "..."}]}
+
+Error response (for any type)::
 
     {"ok": false, "error": "description of the error"}
 """
@@ -135,6 +142,15 @@ class SocketServer:
         if isinstance(data, dict) and data.get("type") == "list_sessions":
             return await self._handle_list_sessions()
 
+        if isinstance(data, dict) and data.get("type") == "get_history":
+            session_id = data.get("session_id")
+            if not session_id or not isinstance(session_id, str):
+                return json.dumps({
+                    "ok": False,
+                    "error": "get_history requires a string 'session_id' field",
+                })
+            return await self._handle_get_history(session_id)
+
         # ── Standard message dispatch ────────────────────────────────
         try:
             message = StandardMessage.from_dict(data)
@@ -152,6 +168,36 @@ class SocketServer:
             "session_id": result.session_id,
             "response": result.response,
             "backend": result.backend,
+        })
+
+    async def _handle_get_history(self, session_id: str) -> str:
+        """Return message history for a session as a JSON response."""
+        try:
+            repo = self._dispatcher._repo
+            session = await repo.get_session(session_id)
+            if session is None:
+                return json.dumps({
+                    "ok": False,
+                    "error": f"Session not found: {session_id}",
+                })
+            messages = await repo.get_messages_for_session(session_id)
+        except Exception as exc:
+            logger.exception("Failed to get history")
+            return json.dumps({"ok": False, "error": f"History error: {exc}"})
+
+        return json.dumps({
+            "ok": True,
+            "session_id": session_id,
+            "messages": [
+                {
+                    "role": m.role,
+                    "content": m.content,
+                    "source": m.source,
+                    "user_id": m.user_id,
+                    "created_at": m.created_at,
+                }
+                for m in messages
+            ],
         })
 
     async def _handle_list_sessions(self) -> str:
