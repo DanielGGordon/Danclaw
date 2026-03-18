@@ -1,19 +1,27 @@
 """Unix domain socket server for the dispatcher.
 
 Runs an asyncio Unix domain socket server that accepts newline-delimited
-JSON messages in :class:`StandardMessage` format, passes them to the
-:class:`Dispatcher`, and writes back the response as JSON.
+JSON messages, passes them to the :class:`Dispatcher`, and writes back
+the response as JSON.
 
 Protocol
 --------
-Each request is a single line of JSON (newline-terminated) representing a
-:class:`StandardMessage`.  The server responds with a single line of JSON
-containing either a successful result or an error::
+Each request is a single line of JSON (newline-terminated).  Two request
+types are supported:
 
-    # Success response
-    {"ok": true, "session_id": "...", "response": "...", "backend": "..."}
+1. **StandardMessage dispatch** — a JSON object with ``source``,
+   ``channel_ref``, ``user_id``, and ``content`` fields (as defined by
+   :class:`StandardMessage`).  Response::
 
-    # Error response
+       {"ok": true, "session_id": "...", "response": "...", "backend": "..."}
+
+2. **List sessions** — ``{"type": "list_sessions"}``  Response::
+
+       {"ok": true, "sessions": [{"id": "...", "agent_name": "...",
+           "state": "...", "created_at": "..."}]}
+
+Error response (for either type)::
+
     {"ok": false, "error": "description of the error"}
 """
 
@@ -111,12 +119,23 @@ class SocketServer:
             logger.debug("Client connection closed: %s", peer)
 
     async def _process_line(self, line: bytes) -> str:
-        """Parse a JSON line, dispatch it, and return the JSON response."""
+        """Parse a JSON line, dispatch it, and return the JSON response.
+
+        Handles two request types:
+
+        * ``{"type": "list_sessions"}`` — returns all sessions.
+        * Any other dict — treated as a :class:`StandardMessage` for dispatch.
+        """
         try:
             data = json.loads(line)
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             return json.dumps({"ok": False, "error": f"Invalid JSON: {exc}"})
 
+        # ── Control requests (keyed by "type") ───────────────────────
+        if isinstance(data, dict) and data.get("type") == "list_sessions":
+            return await self._handle_list_sessions()
+
+        # ── Standard message dispatch ────────────────────────────────
         try:
             message = StandardMessage.from_dict(data)
         except (TypeError, ValueError) as exc:
@@ -133,4 +152,26 @@ class SocketServer:
             "session_id": result.session_id,
             "response": result.response,
             "backend": result.backend,
+        })
+
+    async def _handle_list_sessions(self) -> str:
+        """Return all sessions as a JSON response."""
+        try:
+            repo = self._dispatcher._repo
+            sessions = await repo.list_sessions()
+        except Exception as exc:
+            logger.exception("Failed to list sessions")
+            return json.dumps({"ok": False, "error": f"List error: {exc}"})
+
+        return json.dumps({
+            "ok": True,
+            "sessions": [
+                {
+                    "id": s.id,
+                    "agent_name": s.agent_name,
+                    "state": s.state,
+                    "created_at": s.created_at,
+                }
+                for s in sessions
+            ],
         })

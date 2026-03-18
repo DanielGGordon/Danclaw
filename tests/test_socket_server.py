@@ -326,3 +326,50 @@ async def test_socket_path_property(dispatcher, socket_path):
     """The socket_path property returns the configured path."""
     srv = SocketServer(dispatcher, socket_path)
     assert srv.socket_path == socket_path
+
+
+# ── list_sessions request ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_list_sessions_empty(server, socket_path):
+    """list_sessions returns an empty list when no sessions exist."""
+    resp = await _send_recv(socket_path, {"type": "list_sessions"})
+    assert resp["ok"] is True
+    assert resp["sessions"] == []
+
+
+@pytest.mark.asyncio
+async def test_list_sessions_one_session(server, socket_path):
+    """list_sessions returns a session after a message creates one."""
+    # Create a session by dispatching a message
+    r1 = await _send_recv(socket_path, _msg_dict(content="hello"))
+    assert r1["ok"] is True
+
+    resp = await _send_recv(socket_path, {"type": "list_sessions"})
+    assert resp["ok"] is True
+    assert len(resp["sessions"]) == 1
+    session = resp["sessions"][0]
+    assert session["id"] == r1["session_id"]
+    assert session["agent_name"] == "test-agent"
+    assert session["state"] == "ACTIVE"
+    assert "created_at" in session
+
+
+@pytest.mark.asyncio
+async def test_list_sessions_multiple_sessions(server, socket_path):
+    """list_sessions returns all sessions when multiple exist."""
+    # Create sessions on different channels to get different sessions
+    r1 = await _send_recv(socket_path, _msg_dict(channel_ref="ch1", content="a"))
+    r2 = await _send_recv(socket_path, _msg_dict(channel_ref="ch2", content="b"))
+    r3 = await _send_recv(socket_path, _msg_dict(channel_ref="ch3", content="c"))
+    assert r1["ok"] and r2["ok"] and r3["ok"]
+    # Verify they are different sessions
+    session_ids = {r1["session_id"], r2["session_id"], r3["session_id"]}
+    assert len(session_ids) == 3
+
+    resp = await _send_recv(socket_path, {"type": "list_sessions"})
+    assert resp["ok"] is True
+    assert len(resp["sessions"]) == 3
+    returned_ids = {s["id"] for s in resp["sessions"]}
+    assert returned_ids == session_ids

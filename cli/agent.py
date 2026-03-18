@@ -7,9 +7,15 @@ Subcommands
     Each message is sent as a :class:`StandardMessage` JSON line.  The chat
     loop continues until the user types "exit" or presses Ctrl+C.
 
+``agent list``
+    List active sessions from the dispatcher.  Connects to the Unix domain
+    socket, sends a ``list_sessions`` request, and displays the results as
+    a formatted table.
+
 Usage::
 
     python -m cli.agent chat [--socket /path/to/socket]
+    python -m cli.agent list [--socket /path/to/socket]
 """
 
 from __future__ import annotations
@@ -166,6 +172,74 @@ def chat(socket_path: str, *, input_fn=None, print_fn=None) -> None:
         sock.close()
 
 
+def _format_sessions_table(sessions: list[dict]) -> str:
+    """Format a list of session dicts as a text table.
+
+    Parameters
+    ----------
+    sessions:
+        Each dict must have ``id``, ``agent_name``, ``state``, and
+        ``created_at`` keys.
+
+    Returns
+    -------
+    str
+        A formatted table string with header and one row per session.
+        Returns a "No sessions found." message if the list is empty.
+    """
+    if not sessions:
+        return "No sessions found."
+
+    headers = ["ID", "AGENT", "STATE", "CREATED"]
+    rows = [
+        [s["id"], s["agent_name"], s["state"], s["created_at"]]
+        for s in sessions
+    ]
+
+    # Compute column widths
+    col_widths = [len(h) for h in headers]
+    for row in rows:
+        for i, cell in enumerate(row):
+            col_widths[i] = max(col_widths[i], len(cell))
+
+    def _fmt_row(cells: list[str]) -> str:
+        return "  ".join(c.ljust(col_widths[i]) for i, c in enumerate(cells))
+
+    lines = [_fmt_row(headers), _fmt_row(["-" * w for w in col_widths])]
+    for row in rows:
+        lines.append(_fmt_row(row))
+    return "\n".join(lines)
+
+
+def list_sessions(socket_path: str, *, print_fn=None) -> None:
+    """Connect to the dispatcher and display all sessions.
+
+    Parameters
+    ----------
+    socket_path:
+        Path to the dispatcher's Unix domain socket.
+    print_fn:
+        Callable for printing output (default: builtin ``print``).
+    """
+    if print_fn is None:
+        print_fn = print
+
+    sock = _connect(socket_path)
+    try:
+        resp = _send_recv(sock, {"type": "list_sessions"})
+    except ConnectionError as exc:
+        print_fn(f"Connection lost: {exc}")
+        return
+    finally:
+        sock.close()
+
+    if not resp.get("ok"):
+        print_fn(f"Error: {resp.get('error', 'unknown error')}")
+        return
+
+    print_fn(_format_sessions_table(resp.get("sessions", [])))
+
+
 def main(argv: list[str] | None = None) -> None:
     """Parse CLI arguments and dispatch to the appropriate subcommand."""
     parser = argparse.ArgumentParser(
@@ -184,6 +258,16 @@ def main(argv: list[str] | None = None) -> None:
         help=f"Path to the dispatcher Unix domain socket (default: {DEFAULT_SOCKET_PATH})",
     )
 
+    list_parser = subparsers.add_parser(
+        "list",
+        help="List sessions from the dispatcher.",
+    )
+    list_parser.add_argument(
+        "--socket",
+        default=DEFAULT_SOCKET_PATH,
+        help=f"Path to the dispatcher Unix domain socket (default: {DEFAULT_SOCKET_PATH})",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command is None:
@@ -192,6 +276,8 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.command == "chat":
         chat(args.socket)
+    elif args.command == "list":
+        list_sessions(args.socket)
 
 
 if __name__ == "__main__":

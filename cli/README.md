@@ -18,6 +18,18 @@ python -m cli.agent chat [--socket /path/to/socket]
 - Creates a new session on the first message and reuses it for subsequent messages.
 - Type `exit` or press Ctrl+C to quit.
 
+### `agent list`
+
+List all sessions from the dispatcher in a formatted table.
+
+```bash
+python -m cli.agent list [--socket /path/to/socket]
+```
+
+- Connects to the dispatcher's Unix domain socket and sends a `list_sessions` request.
+- Displays session IDs, agent names, states, and creation times in a formatted table.
+- Shows "No sessions found." when no sessions exist.
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -28,4 +40,4 @@ python -m cli.agent chat [--socket /path/to/socket]
 ## Module Layout
 
 - `__init__.py` — Package marker.
-- `agent.py` — `agent` command with `chat` subcommand. Contains `chat()`, `_connect()`, `_send_recv()`, `_build_message()`, and `main()`.
+- `agent.py` — `agent` command with `chat` and `list` subcommands. Contains `chat()`, `list_sessions()`, `_format_sessions_table()`, `_connect()`, `_send_recv()`, `_build_message()`, and `main()`.
