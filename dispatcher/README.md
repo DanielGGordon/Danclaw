@@ -6,6 +6,11 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
 
 - `StandardMessage` — frozen dataclass representing the universal internal message format. Fields: `source`, `channel_ref`, `user_id`, `content`, `session_id` (optional). Includes `to_dict()` and `from_dict()` serialization helpers for JSON transport.
 - `init_db(db_path)` — async function that creates the SQLite schema (sessions, messages, channel_bindings tables) using `CREATE TABLE IF NOT EXISTS`. Safe to call on every startup.
+- `Repository(db)` — async repository abstraction layer for all database access. Takes an `aiosqlite.Connection`. Methods:
+  - Sessions: `create_session`, `get_session`, `update_session_state`, `list_sessions`
+  - Messages: `save_message`, `get_messages_for_session`
+  - Channel bindings: `add_channel_binding`, `get_bindings_for_session`, `find_session_by_channel`
+- Row dataclasses: `SessionRow`, `MessageRow`, `ChannelBindingRow` — frozen dataclasses for type-safe query results.
 - Accepts `StandardMessage` via Unix domain socket or HTTP
 - Returns response messages to the calling listener
 - Manages session lifecycle (create, resume, close)
@@ -29,4 +34,4 @@ Run with `python -m dispatcher`. The `__main__.py` module:
 
 ## Status
 
-Dispatcher starts, loads config, logs readiness, and shuts down cleanly on signal. SQLite schema initialisation (`init_db`) is available. No routing or session logic yet.
+Dispatcher starts, loads config, logs readiness, and shuts down cleanly on signal. SQLite schema initialisation (`init_db`) and repository abstraction layer (`Repository`) are available. No routing or session logic yet.
