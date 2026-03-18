@@ -376,6 +376,7 @@ A good test for this system verifies **external behavior through the interfaces*
 
 ## Stretch Goals (Low Priority)
 
+- **Voice note processing** — transcribe and process voice notes/audio messages from Slack, WhatsApp, and other channels. Handled by a subagent spawned by the dispatcher (not inline) so it doesn't block the main dispatch loop. The subagent transcribes the audio (via ElevenLabs or Whisper), converts it to a StandardMessage, and feeds it back into the session as if the user had typed it.
 - **Daily digest** — agent sends a summary of all sessions/actions from the past 24 hours via Slack or email.
 - **Alert thresholds** — notifications for unusual activity (error spikes, credit usage, stuck agents).
 
