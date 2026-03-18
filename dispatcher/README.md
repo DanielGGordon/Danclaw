@@ -23,7 +23,12 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
 - `Executor` — protocol (typing.Protocol) defining the async `execute(message) -> ExecutorResult` interface that all executor implementations must satisfy.
 - `ExecutorResult` — frozen dataclass with `content` (response text) and `backend` (name of the backend that produced it).
 - `MockExecutor(fixed_response=None)` — executor that returns canned responses. Echoes input by default (`"mock response: <content>"`); returns a fixed string when `fixed_response` is provided.
-- Accepts `StandardMessage` via Unix domain socket or HTTP
+- `SocketServer(dispatcher, socket_path)` — asyncio Unix domain socket server that fronts the Dispatcher. Accepts newline-delimited JSON messages in `StandardMessage` format and writes back JSON responses. Methods:
+  - `start()` — begin listening on the Unix domain socket (removes stale socket file first)
+  - `stop()` — stop accepting connections and remove the socket file
+  - `socket_path` — property returning the configured socket path
+  - `is_serving` — property returning whether the server is currently active
+  - Response format: `{"ok": true, "session_id": "...", "response": "...", "backend": "..."}` on success, `{"ok": false, "error": "..."}` on failure
 - Returns response messages to the calling listener
 
 ## Relationship to Other Modules
@@ -45,4 +50,4 @@ Run with `python -m dispatcher`. The `__main__.py` module:
 
 ## Status
 
-Dispatcher starts, loads config, logs readiness, and shuts down cleanly on signal. SQLite schema initialisation (`init_db`), repository abstraction layer (`Repository`), session lifecycle manager (`SessionManager`), mocked executor (`MockExecutor`), and the core `Dispatcher` routing class are available. The full pipeline (message in -> session -> executor -> store -> response) works end-to-end with the mock executor. The real AI executor backends (claude, codex) are planned for Phase 6.
+Dispatcher starts, loads config, logs readiness, and shuts down cleanly on signal. SQLite schema initialisation (`init_db`), repository abstraction layer (`Repository`), session lifecycle manager (`SessionManager`), mocked executor (`MockExecutor`), the core `Dispatcher` routing class, and the `SocketServer` Unix domain socket interface are available. The full pipeline (message in -> session -> executor -> store -> response) works end-to-end with the mock executor, accessible via Unix domain socket. The real AI executor backends (claude, codex) are planned for Phase 6.

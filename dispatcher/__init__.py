@@ -4,6 +4,7 @@ from dispatcher.executor import ExecutorResult, MockExecutor
 from dispatcher.models import StandardMessage
 from dispatcher.repository import Repository
 from dispatcher.session_manager import SessionManager
+from dispatcher.socket_server import SocketServer
 
 __all__ = [
     "StandardMessage",
@@ -14,4 +15,5 @@ __all__ = [
     "SessionManager",
     "ExecutorResult",
     "MockExecutor",
+    "SocketServer",
 ]
