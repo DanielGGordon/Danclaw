@@ -4,6 +4,7 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
 
 ## Public Interface
 
+- `StandardMessage` — frozen dataclass representing the universal internal message format. Fields: `source`, `channel_ref`, `user_id`, `content`, `session_id` (optional). Includes `to_dict()` and `from_dict()` serialization helpers for JSON transport.
 - Accepts `StandardMessage` via Unix domain socket or HTTP
 - Returns response messages to the calling listener
 - Manages session lifecycle (create, resume, close)

@@ -54,7 +54,7 @@ The core dispatcher loop: accept a StandardMessage, find or create a session, ro
 
 ### Acceptance criteria
 
-- [ ] `StandardMessage` data model defined (source, channel_ref, user_id, content, session_id)
+- [x] `StandardMessage` data model defined (source, channel_ref, user_id, content, session_id)
 - [ ] SQLite schema created on first run: sessions, messages, channel_bindings tables
 - [ ] Repository abstraction layer for all DB access (no direct SQL outside the repository)
 - [ ] Session manager: create session, find by ID, update state (ACTIVE, WAITING_FOR_HUMAN, DONE, ERROR)

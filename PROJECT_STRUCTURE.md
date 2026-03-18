@@ -20,8 +20,9 @@ danclaw/
 │   ├── danclaw.json          # Main config: agent definitions, listener settings
 │   └── README.md             # Module documentation
 ├── dispatcher/
-│   ├── __init__.py           # Python package marker
+│   ├── __init__.py           # Re-exports StandardMessage
 │   ├── __main__.py           # Entry point: config loading, signal handling, async loop
+│   ├── models.py             # StandardMessage frozen dataclass with serialization helpers
 │   └── README.md             # Module documentation
 ├── listeners/
 │   ├── __init__.py           # Python package marker
