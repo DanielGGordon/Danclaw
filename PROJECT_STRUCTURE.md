@@ -16,7 +16,7 @@ danclaw/
 ├── docker-compose.yml        # Multi-service orchestration with SQLite volume and .env
 ├── cli/
 │   ├── __init__.py           # Python package marker
-│   ├── agent.py              # CLI entry point: `agent chat` interactive session over Unix socket
+│   ├── agent.py              # CLI entry point: `agent chat` and `agent list` subcommands over Unix socket
 │   └── README.md             # Module documentation
 ├── config/
 │   ├── __init__.py           # Re-exports load_config, DanClawConfig, AgentConfig, ConfigError
@@ -48,7 +48,7 @@ danclaw/
 
 ## Module Descriptions
 
-- **cli/**: Command-line interface. `agent chat` starts an interactive session over the dispatcher's Unix domain socket.
+- **cli/**: Command-line interface. `agent chat` starts an interactive session over the dispatcher's Unix domain socket. `agent list` displays all sessions in a formatted table.
 - **config/**: Configuration loading and validation. Reads JSON config defining agents, listeners, permissions.
 - **dispatcher/**: Core message routing, session management, permission checks, AI executor invocation.
 - **listeners/**: Channel adapters (terminal, Slack, Twilio) that translate to/from StandardMessage.

@@ -79,8 +79,8 @@ A terminal-based listener that connects to the dispatcher via Unix domain socket
 
 - [x] Dispatcher listens on a Unix domain socket, accepts StandardMessage JSON, returns response JSON
 - [x] `agent chat` command starts an interactive session — type a message, see the response, repeat
-- [ ] `agent chat` creates a new session on first message, reuses it for subsequent messages
-- [ ] `agent list` command shows active sessions with their IDs and states
+- [x] `agent chat` creates a new session on first message, reuses it for subsequent messages
+- [x] `agent list` command shows active sessions with their IDs and states
 - [ ] `agent attach <session-id>` attaches to an existing session and shows its message history
 - [ ] Terminal listener runs as its own process (or Docker container), communicating with the dispatcher over the Unix socket
 - [ ] Clean shutdown on Ctrl+C

@@ -13,7 +13,15 @@ from unittest.mock import patch
 import aiosqlite
 import pytest
 
-from cli.agent import _build_message, _connect, _send_recv, chat, main
+from cli.agent import (
+    _build_message,
+    _connect,
+    _format_sessions_table,
+    _send_recv,
+    chat,
+    list_sessions,
+    main,
+)
 from dispatcher.database import _SCHEMA_SQL
 from dispatcher.dispatcher import Dispatcher
 from dispatcher.executor import MockExecutor
@@ -288,3 +296,145 @@ def test_main_chat_subcommand(server_env):
 
     # Verify chat ran
     assert any("mock response: hello" in line for line in output)
+
+
+# ── _format_sessions_table tests ──────────────────────────────────
+
+
+def test_format_sessions_table_empty():
+    """Empty session list produces 'No sessions found.' message."""
+    result = _format_sessions_table([])
+    assert result == "No sessions found."
+
+
+def test_format_sessions_table_one_session():
+    """A single session is displayed as a table with header."""
+    sessions = [
+        {
+            "id": "abc123",
+            "agent_name": "default",
+            "state": "ACTIVE",
+            "created_at": "2026-01-01T00:00:00+00:00",
+        }
+    ]
+    result = _format_sessions_table(sessions)
+    lines = result.split("\n")
+    assert len(lines) == 3  # header + separator + 1 row
+    assert "ID" in lines[0]
+    assert "AGENT" in lines[0]
+    assert "STATE" in lines[0]
+    assert "CREATED" in lines[0]
+    assert "abc123" in lines[2]
+    assert "default" in lines[2]
+    assert "ACTIVE" in lines[2]
+
+
+def test_format_sessions_table_multiple_sessions():
+    """Multiple sessions produce a table with one row each."""
+    sessions = [
+        {
+            "id": "s1",
+            "agent_name": "agent-a",
+            "state": "ACTIVE",
+            "created_at": "2026-01-01T00:00:00+00:00",
+        },
+        {
+            "id": "s2",
+            "agent_name": "agent-b",
+            "state": "WAITING_FOR_HUMAN",
+            "created_at": "2026-01-01T01:00:00+00:00",
+        },
+        {
+            "id": "s3",
+            "agent_name": "agent-a",
+            "state": "DONE",
+            "created_at": "2026-01-01T02:00:00+00:00",
+        },
+    ]
+    result = _format_sessions_table(sessions)
+    lines = result.split("\n")
+    assert len(lines) == 5  # header + separator + 3 rows
+    assert "s1" in lines[2]
+    assert "s2" in lines[3]
+    assert "WAITING_FOR_HUMAN" in lines[3]
+    assert "s3" in lines[4]
+    assert "DONE" in lines[4]
+
+
+# ── list_sessions() integration tests ────────────────────────────
+
+
+def test_list_sessions_empty(server_env):
+    """list_sessions with no sessions prints 'No sessions found.'."""
+    output: list[str] = []
+    list_sessions(server_env, print_fn=output.append)
+    assert len(output) == 1
+    assert output[0] == "No sessions found."
+
+
+def test_list_sessions_after_chat(server_env):
+    """list_sessions shows a session after a chat message creates one."""
+    # First, send a message to create a session
+    sock = _connect(server_env)
+    try:
+        msg = {
+            "source": "terminal",
+            "channel_ref": "test-ref",
+            "user_id": "test-user",
+            "content": "hello",
+        }
+        resp = _send_recv(sock, msg)
+        assert resp["ok"] is True
+    finally:
+        sock.close()
+
+    # Now list sessions
+    output: list[str] = []
+    list_sessions(server_env, print_fn=output.append)
+    result = output[0]
+    assert "ACTIVE" in result
+    assert "test-agent" in result
+
+
+def test_list_sessions_multiple(server_env):
+    """list_sessions shows multiple sessions."""
+    # Create sessions on different channels
+    for ref in ["ch1", "ch2"]:
+        sock = _connect(server_env)
+        try:
+            msg = {
+                "source": "terminal",
+                "channel_ref": ref,
+                "user_id": "test-user",
+                "content": "hello",
+            }
+            resp = _send_recv(sock, msg)
+            assert resp["ok"] is True
+        finally:
+            sock.close()
+
+    output: list[str] = []
+    list_sessions(server_env, print_fn=output.append)
+    result = output[0]
+    lines = result.split("\n")
+    # header + separator + 2 data rows
+    assert len(lines) == 4
+
+
+def test_list_sessions_connection_error():
+    """list_sessions handles connection failures gracefully."""
+    with pytest.raises(ConnectionError, match="Cannot connect"):
+        list_sessions(
+            "/tmp/nonexistent_danclaw_test.sock",
+            print_fn=lambda _: None,
+        )
+
+
+def test_main_list_subcommand(server_env):
+    """main(['list', '--socket', path]) runs the list command."""
+    output: list[str] = []
+
+    with patch("builtins.print", side_effect=output.append):
+        main(["list", "--socket", server_env])
+
+    assert any("No sessions found" in line for line in output)

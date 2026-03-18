@@ -23,12 +23,15 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
 - `Executor` — protocol (typing.Protocol) defining the async `execute(message) -> ExecutorResult` interface that all executor implementations must satisfy.
 - `ExecutorResult` — frozen dataclass with `content` (response text) and `backend` (name of the backend that produced it).
 - `MockExecutor(fixed_response=None)` — executor that returns canned responses. Echoes input by default (`"mock response: <content>"`); returns a fixed string when `fixed_response` is provided.
-- `SocketServer(dispatcher, socket_path)` — asyncio Unix domain socket server that fronts the Dispatcher. Accepts newline-delimited JSON messages in `StandardMessage` format and writes back JSON responses. Methods:
-  - `start()` — begin listening on the Unix domain socket (removes stale socket file first)
-  - `stop()` — stop accepting connections and remove the socket file
-  - `socket_path` — property returning the configured socket path
-  - `is_serving` — property returning whether the server is currently active
-  - Response format: `{"ok": true, "session_id": "...", "response": "...", "backend": "..."}` on success, `{"ok": false, "error": "..."}` on failure
+- `SocketServer(dispatcher, socket_path)` — asyncio Unix domain socket server that fronts the Dispatcher. Accepts newline-delimited JSON and writes back JSON responses. Supports two request types:
+  - **StandardMessage dispatch** — JSON with `source`, `channel_ref`, `user_id`, `content`. Response: `{"ok": true, "session_id": "...", "response": "...", "backend": "..."}`
+  - **list_sessions** — `{"type": "list_sessions"}`. Response: `{"ok": true, "sessions": [{"id": "...", "agent_name": "...", "state": "...", "created_at": "..."}]}`
+  - Error response (either type): `{"ok": false, "error": "..."}`
+  - Methods:
+    - `start()` — begin listening on the Unix domain socket (removes stale socket file first)
+    - `stop()` — stop accepting connections and remove the socket file
+    - `socket_path` — property returning the configured socket path
+    - `is_serving` — property returning whether the server is currently active
 - Returns response messages to the calling listener
 
 ## Relationship to Other Modules
