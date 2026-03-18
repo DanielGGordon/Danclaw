@@ -59,7 +59,7 @@ The core dispatcher loop: accept a StandardMessage, find or create a session, ro
 - [x] Repository abstraction layer for all DB access (no direct SQL outside the repository)
 - [x] Session manager: create session, find by ID, update state (ACTIVE, WAITING_FOR_HUMAN, DONE, ERROR)
 - [x] Channel binding: associate a session with one or more channel references
-- [ ] Mocked executor that returns a canned response (e.g., echoes the input or returns a fixed string)
+- [x] Mocked executor that returns a canned response (e.g., echoes the input or returns a fixed string)
 - [ ] Dispatcher accepts a StandardMessage, routes through session manager → executor → stores result → returns response
 - [ ] Messages persist across process restarts (SQLite on disk)
 - [ ] Sessions persist across process restarts and resume correctly
