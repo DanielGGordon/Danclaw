@@ -24,6 +24,7 @@ danclaw/
 │   ├── __main__.py           # Entry point: config loading, signal handling, async loop
 │   ├── database.py           # SQLite schema init (sessions, messages, channel_bindings)
 │   ├── models.py             # StandardMessage frozen dataclass with serialization helpers
+│   ├── repository.py         # Async repository abstraction for all DB access (CRUD on sessions, messages, channel_bindings)
 │   └── README.md             # Module documentation
 ├── listeners/
 │   ├── __init__.py           # Python package marker
