@@ -96,18 +96,23 @@ A session-centric multi-agent platform that runs on a dedicated Raspberry Pi 5 (
 
 Every listener — current and future — implements the same contract. The dispatcher and agents know nothing about Slack, Twilio, or any specific channel. All channel-specific logic lives in the listener.
 
+There are two listener categories:
+
+- **Standard listeners** (Slack, terminal, SMS, etc.) — text-based, request/response, routed through the dispatcher per message.
+- **Real-time listeners** (phone/voice) — latency-critical, maintain a direct persistent connection to the AI backend for the duration of the interaction. The dispatcher is only involved at setup (session creation, permission resolution, persona selection) and teardown (logging, session close). Per-utterance audio never round-trips through the dispatcher.
+
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                   LISTENER CONTRACT                           │
+│                   STANDARD LISTENER CONTRACT                  │
 │                                                              │
-│  Every listener must:                                        │
+│  Every standard listener must:                               │
 │                                                              │
 │  1. Receive a message from the outside world                 │
 │  2. Translate it to a StandardMessage:                       │
-│     - source (e.g., "slack", "terminal", "phone")            │
+│     - source (e.g., "slack", "terminal", "sms")              │
 │     - channel_ref (e.g., Slack thread_ts, terminal tty)      │
 │     - user_id                                                │
-│     - content (text, or transcribed audio)                   │
+│     - content (text)                                         │
 │     - session_id (if resuming an existing conversation)      │
 │  3. Send it to the dispatcher via Unix socket or HTTP        │
 │  4. Receive agent responses and translate back to the        │
@@ -116,9 +121,45 @@ Every listener — current and future — implements the same contract. The disp
 │  Adding a new channel = write a listener + register in       │
 │  config. No dispatcher or agent changes needed.              │
 │                                                              │
-│  Known future listeners:                                     │
-│  Slack, Terminal, Phone, SMS, WhatsApp, Chrome Extension,    │
+│  Known future standard listeners:                            │
+│  Slack, Terminal, SMS, WhatsApp, Chrome Extension,           │
 │  ChatGPT (MCP server), Email, Telegram, Calendar, Webhooks  │
+└──────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────┐
+│              REAL-TIME LISTENER (VOICE CALLS)                 │
+│                                                              │
+│  Latency is the #1 priority. No per-utterance dispatcher    │
+│  round-trip. The voice listener is a "thick listener" that   │
+│  manages its own real-time audio pipeline.                   │
+│                                                              │
+│  Call setup:                                                 │
+│    Twilio inbound call                                       │
+│         │                                                    │
+│         ▼                                                    │
+│    Voice Listener ──▶ Dispatcher (once)                      │
+│         │              - create session                      │
+│         │              - resolve permissions                 │
+│         │              - select persona                      │
+│         │              - return config to voice listener     │
+│         │                                                    │
+│  During call (real-time loop, sub-second latency):           │
+│                                                              │
+│    Caller ◄──► Twilio Media Streams (WebSocket, raw audio)   │
+│                       ↕                                      │
+│               ElevenLabs Real-Time API                       │
+│               (STT + TTS, streaming)                         │
+│                       ↕                                      │
+│               LLM (Claude API direct or claude -p,           │
+│               whichever is faster — TBD in implementation)   │
+│                                                              │
+│  Call teardown:                                              │
+│    Voice Listener ──▶ Dispatcher                             │
+│         - log transcript to event store                      │
+│         - close session                                      │
+│                                                              │
+│  Voice cloning: ElevenLabs used to replicate owner's voice   │
+│  so the agent sounds like Dan on calls.                      │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -213,17 +254,18 @@ Every listener — current and future — implements the same contract. The disp
 18. As a Slack user (friend), I want my conversation to happen in a Slack thread, so that the channel stays clean and my session is contained.
 19. As a Slack user (friend), I want the bot to respond in the bot's voice by default, with configurable message formatting/attribution per session, so that responses feel natural.
 20. As a Slack user, I want to be able to switch the active persona in a channel (e.g., "switch to code-review mode"), so that I can access different agent behaviors without changing channels.
-21. As a phone caller, I want to call a Twilio number and speak to an agent using ElevenLabs voice synthesis, so that I can interact with the system hands-free.
-22. As the system owner, I want to add a new listener (e.g., email, webhook) by creating a new systemd service and registering it in config, without modifying the dispatcher, so that the system scales easily.
-23. As the system owner, I want to add a new tool by dropping a script into the tools directory and registering it in an agent's config, so that I can extend capabilities incrementally.
-24. As the system owner, I want all secrets (API keys, tokens) loaded from a secure env file by systemd and never exposed in prompts or logs, so that credentials stay safe.
-25. As the system owner, I want nothing exposed to the public internet — all access goes through Tailscale, so that the attack surface is minimal.
-26. As the system owner, I want sessions to start as 1 human + 1 agent, with the architecture designed to support multi-human sessions later, so that I don't have to rearchitect for collaboration.
-27. As someone reproducing this setup, I want to clone the repo and run `docker-compose up` to get the full system running, so that I don't need to manually install dependencies or configure systemd.
-28. As the system owner, I want to add a new communication channel (e.g., WhatsApp, Telegram, email) by writing a listener that implements the standard interface and registering it in config, without modifying the dispatcher or agents.
-29. As the system owner, I want the dispatcher to be completely channel-agnostic — it only sees StandardMessage objects, never Slack threads or Twilio SIDs — so that the core logic never needs to change when channels are added.
-30. As a ChatGPT user, I want to interact with DanClaw through an MCP server so that I can use ChatGPT as a frontend while DanClaw handles execution (future listener).
-31. As a Chrome extension user, I want to send requests to DanClaw from my browser and receive responses, so that I can trigger agent actions from any webpage (future listener).
+21. As a phone caller, I want to call a Twilio number and have a real-time voice conversation with sub-second latency, using ElevenLabs for voice synthesis (cloned to sound like Dan), so that the experience feels like a natural phone call — not a chatbot with pauses.
+22. As the system owner, I want the voice call path to bypass the dispatcher for per-utterance routing and instead maintain a direct persistent connection to the AI backend, so that latency is minimized during calls.
+23. As the system owner, I want to add a new listener (e.g., email, webhook) by creating a new systemd service and registering it in config, without modifying the dispatcher, so that the system scales easily.
+24. As the system owner, I want to add a new tool by dropping a script into the tools directory and registering it in an agent's config, so that I can extend capabilities incrementally.
+25. As the system owner, I want all secrets (API keys, tokens) loaded from a secure env file by systemd and never exposed in prompts or logs, so that credentials stay safe.
+26. As the system owner, I want nothing exposed to the public internet — all access goes through Tailscale, so that the attack surface is minimal.
+27. As the system owner, I want sessions to start as 1 human + 1 agent, with the architecture designed to support multi-human sessions later, so that I don't have to rearchitect for collaboration.
+28. As someone reproducing this setup, I want to clone the repo and run `docker-compose up` to get the full system running, so that I don't need to manually install dependencies or configure systemd.
+29. As the system owner, I want to add a new communication channel (e.g., WhatsApp, Telegram, email) by writing a listener that implements the standard interface and registering it in config, without modifying the dispatcher or agents.
+30. As the system owner, I want the dispatcher to be completely channel-agnostic — it only sees StandardMessage objects, never Slack threads or Twilio SIDs — so that the core logic never needs to change when channels are added.
+31. As a ChatGPT user, I want to interact with DanClaw through an MCP server so that I can use ChatGPT as a frontend while DanClaw handles execution (future listener).
+32. As a Chrome extension user, I want to send requests to DanClaw from my browser and receive responses, so that I can trigger agent actions from any webpage (future listener).
 
 ## Implementation Decisions
 
@@ -238,8 +280,8 @@ Every listener — current and future — implements the same contract. The disp
 - **Language**: Python 3.11+ — async-first, rich ecosystem for Slack/Twilio/ElevenLabs SDKs, stdlib SQLite.
 - **Async runtime**: `asyncio` — single-process cooperative concurrency for the dispatcher. Handles multiple concurrent sessions without threading overhead.
 - **Slack**: `slack-bolt` in Socket Mode (no inbound webhooks needed, works behind NAT/Tailscale).
-- **Phone/SMS**: `twilio` Python SDK for telephony and SMS.
-- **Voice synthesis**: `elevenlabs` Python SDK for generating speech on phone calls.
+- **Phone/SMS**: `twilio` Python SDK for telephony and SMS. Twilio Media Streams (WebSocket) for real-time audio during calls.
+- **Voice**: `elevenlabs` real-time conversational AI API for streaming STT + TTS with voice cloning (owner's voice). For the voice path, the LLM may be called via Claude API directly instead of `claude -p` subprocess to minimize latency — TBD during implementation.
 - **Database**: `sqlite3` (stdlib) with `aiosqlite` for async access. Repository pattern abstraction for future backend swapability — no ORM.
 - **Internal HTTP**: `aiohttp` — lightweight async HTTP server for webhook-based listeners only. Not a full web framework.
 - **AI executor**: `subprocess` shelling out to `claude -p` and `codex` CLI. No embedded SDKs — keeps the AI layer swappable and transparent.
@@ -249,6 +291,15 @@ Every listener — current and future — implements the same contract. The disp
 - **Containerization**: Docker Compose with one container per service (dispatcher, each listener). SQLite on a volume mount for persistence.
 - **Process management**: systemd for native deployment, Docker Compose for containerized deployment.
 - **Terminal bridge**: `socat` + a small Python CLI (`agent` command) for attaching to sessions via SSH.
+
+### Voice Call Architecture (Latency-Critical Path)
+- Phone calls are a special case where latency is the top priority, worth additional complexity.
+- The voice listener is a "thick listener" — it manages its own real-time audio pipeline during the call, bypassing the dispatcher for per-utterance routing.
+- **Call setup**: Dispatcher is called once to create the session, resolve permissions, and select the persona. Config is returned to the voice listener.
+- **During call**: Twilio Media Streams (WebSocket) streams raw audio to/from ElevenLabs real-time conversational AI API (streaming STT + TTS). The LLM sits in between for intent/response. This loop runs with sub-second latency and never touches the dispatcher.
+- **LLM for voice**: `claude -p` subprocess may add latency on the voice path. Direct Claude API calls or ElevenLabs' built-in LLM integration may be used instead — TBD during implementation based on latency benchmarks.
+- **Call teardown**: Voice listener sends the full transcript to the dispatcher for logging and session close.
+- **Voice cloning**: ElevenLabs is used to clone the owner's voice so the agent sounds like Dan on calls.
 
 ### Agent Configuration
 - Agents are first-class entities defined in a central JSON config. Each agent definition includes: name, persona (system prompt), allowed tools, AI backend preference (ordered list, e.g., `["claude", "codex"]`), and permission boundaries.
