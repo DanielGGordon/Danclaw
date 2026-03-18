@@ -10,6 +10,9 @@ danclaw/
 ├── .env.example              # Environment variable template (secrets placeholder)
 ├── .env                      # Actual secrets (git-ignored)
 ├── .gitignore                # Git ignore rules
+├── pyproject.toml            # Project metadata and dependencies
+├── Dockerfile                # Container image for the dispatcher service
+├── docker-compose.yml        # Multi-service orchestration with SQLite volume and .env
 ├── config/
 │   ├── __init__.py           # Python package marker
 │   └── README.md             # Module documentation

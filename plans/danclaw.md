@@ -33,8 +33,8 @@ Set up the project structure, dependency management, Docker Compose configuratio
 ### Acceptance criteria
 
 - [x] Project has a defined directory structure with clear separation of concerns (listeners, dispatcher, tools, config, personas)
-- [ ] `pyproject.toml` (or equivalent) with initial dependencies: `aiosqlite`, `aiohttp`
-- [ ] Docker Compose file with a dispatcher service, SQLite volume mount, and `.env` file for secrets
+- [x] `pyproject.toml` (or equivalent) with initial dependencies: `aiosqlite`, `aiohttp`
+- [x] Docker Compose file with a dispatcher service, SQLite volume mount, and `.env` file for secrets
 - [ ] `.env.example` with placeholder keys (`SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `CLAUDE_API_KEY`)
 - [ ] JSON config file with a minimal agent definition (name, persona, backend preference)
 - [ ] Config loader that reads and validates the JSON config at startup
