@@ -266,6 +266,7 @@ There are two listener categories:
 30. As the system owner, I want the dispatcher to be completely channel-agnostic — it only sees StandardMessage objects, never Slack threads or Twilio SIDs — so that the core logic never needs to change when channels are added.
 31. As a ChatGPT user, I want to interact with DanClaw through an MCP server so that I can use ChatGPT as a frontend while DanClaw handles execution (future listener).
 32. As a Chrome extension user, I want to send requests to DanClaw from my browser and receive responses, so that I can trigger agent actions from any webpage (future listener).
+33. As the system owner, I want every significant system action (permission checks, routing decisions, agent spawns, tool calls, errors, fallbacks) to emit a structured telemetry event, so that I have full visibility into what the system is doing and why.
 
 ## Implementation Decisions
 
@@ -327,10 +328,18 @@ Approval gates are configurable per channel/persona/user combination.
 - Messages from terminal appear as the bot by default. Attribution formatting is configurable per session.
 - Sessions persist across reboots by default (configurable per session/channel).
 
+### Structured Telemetry
+- Every significant step in the system emits a structured JSONL diagnostic event: permission checks, routing decisions, agent spawns, tool calls, errors, fallbacks, session lifecycle changes.
+- Events are distinct from conversation messages — they capture system behavior, not user content.
+- Each event includes: event_type, session_id, source, status, payload, timestamp.
+- Events are appended to a JSONL file and also stored in the DB for querying.
+- This telemetry powers the future GUI, Slack log channel summaries, and debugging via `journalctl` or direct file inspection.
+
 ### Data Layer
-- SQLite for local storage. Tables: sessions, messages, channel_bindings, events.
+- SQLite for local storage. Tables: sessions, messages, channel_bindings, telemetry_events.
 - Storage access goes through an abstraction layer so the backend is swappable to an external DB later.
-- Event log is append-only — every human message, agent response, tool call, and error is an event. This powers future GUI, daily digests, and audit.
+- Message log is append-only — every human message and agent response is stored per session.
+- Telemetry log is append-only — every system event (routing, permissions, tool calls, errors) is stored separately. This powers future GUI, daily digests, and audit.
 
 ### Tools
 - Each tool is a standalone script (shell or Python) in a `tools/` directory.
@@ -376,7 +385,10 @@ A good test for this system verifies **external behavior through the interfaces*
 
 ## Stretch Goals (Low Priority)
 
-- **Voice note processing** — transcribe and process voice notes/audio messages from Slack, WhatsApp, and other channels. Handled by a subagent spawned by the dispatcher (not inline) so it doesn't block the main dispatch loop. The subagent transcribes the audio (via ElevenLabs or Whisper), converts it to a StandardMessage, and feeds it back into the session as if the user had typed it.
+- **Prompt injection detection** — Multi-layer pre-screening for incoming messages before they reach agents. Needs a dedicated design pass to plan the approach: deterministic regex patterns for known attack vectors, optional model-backed screening for nuance, and a human-in-the-loop review queue for flagged messages. Especially important as more users gain access. (Inspired by Alfred's layered prompt guard.)
+- **Untrusted content wrapping** — Wrap all external user input with source markers (e.g., `<<<EXTERNAL_UNTRUSTED_CONTENT source='slack' user='friend'>>>`) before it reaches the AI backend, so the model can distinguish user input from system instructions. Simple to implement, pairs well with prompt injection detection.
+- **Cost tracking** — Estimate and log tokens + cost per request, per AI backend. Track Claude vs Codex usage over time. Surface in telemetry events and future GUI. Helps anticipate credit exhaustion and optimize agent backend preferences.
+- **Voice note processing** — Transcribe and process voice notes/audio messages from Slack, WhatsApp, and other channels. Handled by a subagent spawned by the dispatcher (not inline) so it doesn't block the main dispatch loop. The subagent transcribes the audio (via ElevenLabs or Whisper), converts it to a StandardMessage, and feeds it back into the session as if the user had typed it.
 - **Daily digest** — agent sends a summary of all sessions/actions from the past 24 hours via Slack or email.
 - **Alert thresholds** — notifications for unusual activity (error spikes, credit usage, stuck agents).
 
