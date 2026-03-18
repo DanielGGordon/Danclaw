@@ -15,6 +15,7 @@ danclaw/
 ├── docker-compose.yml        # Multi-service orchestration with SQLite volume and .env
 ├── config/
 │   ├── __init__.py           # Python package marker
+│   ├── danclaw.json          # Main config: agent definitions, listener settings
 │   └── README.md             # Module documentation
 ├── dispatcher/
 │   ├── __init__.py           # Python package marker
@@ -23,6 +24,7 @@ danclaw/
 │   ├── __init__.py           # Python package marker
 │   └── README.md             # Module documentation
 ├── personas/
+│   ├── default.md            # Default agent persona (system prompt)
 │   └── README.md             # Module documentation
 ├── tools/
 │   ├── __init__.py           # Python package marker

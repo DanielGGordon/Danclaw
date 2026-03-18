@@ -1,0 +1,11 @@
+{
+  "agents": [
+    {
+      "name": "default",
+      "persona": "default",
+      "backend_preference": ["claude", "codex"],
+      "tools": []
+    }
+  ],
+  "listeners": {}
+}
