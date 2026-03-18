@@ -373,3 +373,95 @@ async def test_list_sessions_multiple_sessions(server, socket_path):
     assert len(resp["sessions"]) == 3
     returned_ids = {s["id"] for s in resp["sessions"]}
     assert returned_ids == session_ids
+
+
+# ── get_history request ──────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_get_history_empty_session(server, socket_path, db):
+    """get_history returns empty messages for a session with no messages."""
+    # Manually create a session with no messages via the repo
+    repo = Repository(db)
+    session = await repo.create_session("test-agent", session_id="empty-sess")
+
+    resp = await _send_recv(socket_path, {
+        "type": "get_history",
+        "session_id": "empty-sess",
+    })
+    assert resp["ok"] is True
+    assert resp["session_id"] == "empty-sess"
+    assert resp["messages"] == []
+
+
+@pytest.mark.asyncio
+async def test_get_history_with_messages(server, socket_path):
+    """get_history returns all messages for a session in order."""
+    # Create a session by sending a message
+    r1 = await _send_recv(socket_path, _msg_dict(content="hello"))
+    assert r1["ok"] is True
+    session_id = r1["session_id"]
+
+    # Send another message to the same session
+    r2 = await _send_recv(
+        socket_path,
+        _msg_dict(content="world", session_id=session_id),
+    )
+    assert r2["ok"] is True
+
+    # Fetch history
+    resp = await _send_recv(socket_path, {
+        "type": "get_history",
+        "session_id": session_id,
+    })
+    assert resp["ok"] is True
+    assert resp["session_id"] == session_id
+    msgs = resp["messages"]
+    # 2 user messages + 2 assistant responses = 4 total
+    assert len(msgs) == 4
+    assert msgs[0]["role"] == "user"
+    assert msgs[0]["content"] == "hello"
+    assert msgs[1]["role"] == "assistant"
+    assert msgs[1]["content"] == "mock response: hello"
+    assert msgs[2]["role"] == "user"
+    assert msgs[2]["content"] == "world"
+    assert msgs[3]["role"] == "assistant"
+    assert msgs[3]["content"] == "mock response: world"
+
+
+@pytest.mark.asyncio
+async def test_get_history_nonexistent_session(server, socket_path):
+    """get_history returns error for a session that doesn't exist."""
+    resp = await _send_recv(socket_path, {
+        "type": "get_history",
+        "session_id": "no-such-session",
+    })
+    assert resp["ok"] is False
+    assert "Session not found" in resp["error"]
+
+
+@pytest.mark.asyncio
+async def test_get_history_missing_session_id(server, socket_path):
+    """get_history without session_id returns an error."""
+    resp = await _send_recv(socket_path, {"type": "get_history"})
+    assert resp["ok"] is False
+    assert "session_id" in resp["error"]
+
+
+@pytest.mark.asyncio
+async def test_get_history_message_fields(server, socket_path):
+    """get_history messages contain the expected fields."""
+    r1 = await _send_recv(socket_path, _msg_dict(content="test"))
+    assert r1["ok"] is True
+
+    resp = await _send_recv(socket_path, {
+        "type": "get_history",
+        "session_id": r1["session_id"],
+    })
+    assert resp["ok"] is True
+    msg = resp["messages"][0]
+    assert "role" in msg
+    assert "content" in msg
+    assert "source" in msg
+    assert "user_id" in msg
+    assert "created_at" in msg

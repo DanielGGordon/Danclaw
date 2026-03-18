@@ -26,7 +26,8 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
 - `SocketServer(dispatcher, socket_path)` — asyncio Unix domain socket server that fronts the Dispatcher. Accepts newline-delimited JSON and writes back JSON responses. Supports two request types:
   - **StandardMessage dispatch** — JSON with `source`, `channel_ref`, `user_id`, `content`. Response: `{"ok": true, "session_id": "...", "response": "...", "backend": "..."}`
   - **list_sessions** — `{"type": "list_sessions"}`. Response: `{"ok": true, "sessions": [{"id": "...", "agent_name": "...", "state": "...", "created_at": "..."}]}`
-  - Error response (either type): `{"ok": false, "error": "..."}`
+  - **get_history** — `{"type": "get_history", "session_id": "..."}`. Response: `{"ok": true, "session_id": "...", "messages": [{"role": "...", "content": "...", "source": "...", "user_id": "...", "created_at": "..."}]}`
+  - Error response (any type): `{"ok": false, "error": "..."}`
   - Methods:
     - `start()` — begin listening on the Unix domain socket (removes stale socket file first)
     - `stop()` — stop accepting connections and remove the socket file
