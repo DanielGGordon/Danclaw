@@ -39,7 +39,7 @@ Set up the project structure, dependency management, Docker Compose configuratio
 - [x] JSON config file with a minimal agent definition (name, persona, backend preference)
 - [x] Config loader that reads and validates the JSON config at startup
 - [x] Dispatcher process starts, loads config, logs readiness, and exits cleanly on shutdown
-- [ ] `docker-compose up` builds and runs successfully
+- [x] `docker-compose up` builds and runs successfully
 - [ ] `.gitignore` excludes `.env`, SQLite files, `__pycache__`, etc.
 
 ---

@@ -9,6 +9,7 @@ danclaw/
 │   └── danclaw.md            # Implementation plan with phases and acceptance criteria
 ├── .env.example              # Environment variable template (secrets placeholder)
 ├── .env                      # Actual secrets (git-ignored)
+├── .dockerignore             # Docker build context exclusions
 ├── .gitignore                # Git ignore rules
 ├── pyproject.toml            # Project metadata and dependencies
 ├── Dockerfile                # Container image for the dispatcher service
