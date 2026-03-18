@@ -40,7 +40,7 @@ Set up the project structure, dependency management, Docker Compose configuratio
 - [x] Config loader that reads and validates the JSON config at startup
 - [x] Dispatcher process starts, loads config, logs readiness, and exits cleanly on shutdown
 - [x] `docker-compose up` builds and runs successfully
-- [ ] `.gitignore` excludes `.env`, SQLite files, `__pycache__`, etc.
+- [x] `.gitignore` excludes `.env`, SQLite files, `__pycache__`, etc.
 
 ---
 
