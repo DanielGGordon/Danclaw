@@ -16,6 +16,10 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
   - `get_session(session_id)` — retrieves a session by ID
   - `update_state(session_id, new_state)` — transitions session state with validation of allowed transitions
   - `list_active_sessions()` — returns all ACTIVE and WAITING_FOR_HUMAN sessions
+- `Dispatcher(session_manager, repo, executor, agent_name="default")` — core routing class that accepts a `StandardMessage` and runs the full pipeline:
+  - `dispatch(message) -> DispatchResult` — finds or creates a session, stores the inbound message, calls the executor, stores the response, and returns a `DispatchResult`.
+  - On executor failure, sets session state to `ERROR` and re-raises the exception.
+- `DispatchResult` — frozen dataclass with `session_id`, `response` (text), and `backend` (name of the backend that produced it).
 - `Executor` — protocol (typing.Protocol) defining the async `execute(message) -> ExecutorResult` interface that all executor implementations must satisfy.
 - `ExecutorResult` — frozen dataclass with `content` (response text) and `backend` (name of the backend that produced it).
 - `MockExecutor(fixed_response=None)` — executor that returns canned responses. Echoes input by default (`"mock response: <content>"`); returns a fixed string when `fixed_response` is provided.
@@ -41,4 +45,4 @@ Run with `python -m dispatcher`. The `__main__.py` module:
 
 ## Status
 
-Dispatcher starts, loads config, logs readiness, and shuts down cleanly on signal. SQLite schema initialisation (`init_db`), repository abstraction layer (`Repository`), session lifecycle manager (`SessionManager`), and mocked executor (`MockExecutor`) are available. No routing logic yet; the real AI executor backends (claude, codex) are planned for Phase 6.
+Dispatcher starts, loads config, logs readiness, and shuts down cleanly on signal. SQLite schema initialisation (`init_db`), repository abstraction layer (`Repository`), session lifecycle manager (`SessionManager`), mocked executor (`MockExecutor`), and the core `Dispatcher` routing class are available. The full pipeline (message in -> session -> executor -> store -> response) works end-to-end with the mock executor. The real AI executor backends (claude, codex) are planned for Phase 6.

@@ -20,9 +20,10 @@ danclaw/
 │   ├── danclaw.json          # Main config: agent definitions, listener settings
 │   └── README.md             # Module documentation
 ├── dispatcher/
-│   ├── __init__.py           # Re-exports StandardMessage, init_db
+│   ├── __init__.py           # Re-exports StandardMessage, init_db, Dispatcher, DispatchResult, etc.
 │   ├── __main__.py           # Entry point: config loading, signal handling, async loop
 │   ├── database.py           # SQLite schema init (sessions, messages, channel_bindings)
+│   ├── dispatcher.py         # Core Dispatcher class: routes messages through session → executor → storage pipeline
 │   ├── executor.py           # AI executor protocol, ExecutorResult, and MockExecutor (canned responses)
 │   ├── models.py             # StandardMessage frozen dataclass with serialization helpers
 │   ├── repository.py         # Async repository abstraction for all DB access (CRUD on sessions, messages, channel_bindings)
