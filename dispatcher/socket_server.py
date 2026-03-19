@@ -157,8 +157,7 @@ class SocketServer:
     async def _handle_list_sessions(self) -> str:
         """Return all sessions as a JSON response."""
         try:
-            repo = self._dispatcher._repo
-            sessions = await repo.list_sessions()
+            sessions = await self._dispatcher.list_sessions()
         except Exception as exc:
             logger.exception("Failed to list sessions")
             return json.dumps({"ok": False, "error": f"List error: {exc}"})

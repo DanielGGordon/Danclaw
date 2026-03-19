@@ -142,3 +142,7 @@ class Dispatcher:
             response=result.content,
             backend=result.backend,
         )
+
+    async def list_sessions(self) -> list:
+        """Return all sessions from the repository."""
+        return await self._repo.list_sessions()
