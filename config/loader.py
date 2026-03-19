@@ -117,6 +117,11 @@ def load_config(
                 )
         if not isinstance(tools, list):
             raise ConfigError(f"agents[{idx}] ({name}): 'tools' must be a list")
+        for t in tools:
+            if not isinstance(t, str):
+                raise ConfigError(
+                    f"agents[{idx}] ({name}): 'tools' entries must be strings"
+                )
 
         # Validate persona file exists
         persona_file = personas_dir / f"{persona}.md"
