@@ -27,10 +27,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import socket
 import sys
 import uuid
+
+from logging_config import setup_logging
 
 
 DEFAULT_SOCKET_PATH = os.environ.get(
@@ -421,6 +424,8 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     args = parser.parse_args(argv)
+
+    setup_logging(level=logging.WARNING)
 
     if args.command is None:
         parser.print_help()
