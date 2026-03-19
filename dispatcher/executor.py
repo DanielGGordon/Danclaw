@@ -415,7 +415,7 @@ class FallbackExecutor:
                             self._telemetry.record(
                                 "fallback",
                                 {
-                                    "failed_backends": failed_backends,
+                                    "failed_backends": list(failed_backends),
                                     "succeeded_backend": result.backend,
                                 },
                             )
