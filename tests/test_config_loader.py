@@ -47,7 +47,7 @@ def test_load_valid_config(tmp_project):
                     "name": "default",
                     "persona": "default",
                     "backend_preference": ["claude", "codex"],
-                    "tools": [],
+                    "allowed_tools": [],
                 }
             ],
             "listeners": {},
@@ -60,7 +60,7 @@ def test_load_valid_config(tmp_project):
     assert cfg.agents[0].name == "default"
     assert cfg.agents[0].persona == "default"
     assert cfg.agents[0].backend_preference == ["claude", "codex"]
-    assert cfg.agents[0].tools == []
+    assert cfg.agents[0].allowed_tools == []
     assert cfg.listeners == {}
 
 
@@ -78,7 +78,7 @@ def test_load_multiple_agents(tmp_project):
                     "name": "coder",
                     "persona": "coder",
                     "backend_preference": ["codex", "claude"],
-                    "tools": ["git", "obsidian"],
+                    "allowed_tools": ["git", "obsidian"],
                 },
             ],
         }
@@ -86,10 +86,10 @@ def test_load_multiple_agents(tmp_project):
     cfg = load_config(path, personas_dir=tmp_project.personas)
     assert len(cfg.agents) == 2
     assert cfg.agents[1].name == "coder"
-    assert cfg.agents[1].tools == ["git", "obsidian"]
+    assert cfg.agents[1].allowed_tools == ["git", "obsidian"]
 
 
-def test_tools_default_to_empty(tmp_project):
+def test_allowed_tools_default_to_empty(tmp_project):
     path = tmp_project.write_config(
         {
             "agents": [
@@ -102,7 +102,7 @@ def test_tools_default_to_empty(tmp_project):
         }
     )
     cfg = load_config(path, personas_dir=tmp_project.personas)
-    assert cfg.agents[0].tools == []
+    assert cfg.agents[0].allowed_tools == []
 
 
 def test_listeners_default_to_empty(tmp_project):
@@ -222,6 +222,78 @@ def test_agent_backend_preference_not_strings(tmp_project):
         }
     )
     with pytest.raises(ConfigError, match="entries must be strings"):
+        load_config(path, personas_dir=tmp_project.personas)
+
+
+def test_agent_allowed_tools_not_a_list(tmp_project):
+    path = tmp_project.write_config(
+        {
+            "agents": [
+                {
+                    "name": "a",
+                    "persona": "default",
+                    "backend_preference": ["claude"],
+                    "allowed_tools": "not-a-list",
+                }
+            ]
+        }
+    )
+    with pytest.raises(ConfigError, match="'allowed_tools' must be a list"):
+        load_config(path, personas_dir=tmp_project.personas)
+
+
+def test_agent_allowed_tools_entries_must_be_strings(tmp_project):
+    path = tmp_project.write_config(
+        {
+            "agents": [
+                {
+                    "name": "a",
+                    "persona": "default",
+                    "backend_preference": ["claude"],
+                    "allowed_tools": [123],
+                }
+            ]
+        }
+    )
+    with pytest.raises(ConfigError, match="'allowed_tools' entries must be non-empty strings"):
+        load_config(path, personas_dir=tmp_project.personas)
+
+
+def test_agent_allowed_tools_empty_string_rejected(tmp_project):
+    path = tmp_project.write_config(
+        {
+            "agents": [
+                {
+                    "name": "a",
+                    "persona": "default",
+                    "backend_preference": ["claude"],
+                    "allowed_tools": [""],
+                }
+            ]
+        }
+    )
+    with pytest.raises(ConfigError, match="'allowed_tools' entries must be non-empty strings"):
+        load_config(path, personas_dir=tmp_project.personas)
+
+
+def test_agent_duplicate_names_rejected(tmp_project):
+    path = tmp_project.write_config(
+        {
+            "agents": [
+                {
+                    "name": "default",
+                    "persona": "default",
+                    "backend_preference": ["claude"],
+                },
+                {
+                    "name": "default",
+                    "persona": "default",
+                    "backend_preference": ["codex"],
+                },
+            ]
+        }
+    )
+    with pytest.raises(ConfigError, match="duplicate agent name"):
         load_config(path, personas_dir=tmp_project.personas)
 
 

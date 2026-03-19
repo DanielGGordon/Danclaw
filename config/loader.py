@@ -14,7 +14,7 @@ class AgentConfig:
     name: str
     persona: str
     backend_preference: list[str]
-    tools: list[str] = field(default_factory=list)
+    allowed_tools: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -85,6 +85,7 @@ def load_config(
         raise ConfigError("'agents' list must not be empty")
 
     agents: list[AgentConfig] = []
+    seen_names: set[str] = set()
     for idx, agent_data in enumerate(agents_raw):
         if not isinstance(agent_data, dict):
             raise ConfigError(f"agents[{idx}]: must be a JSON object")
@@ -99,11 +100,14 @@ def load_config(
         name = agent_data["name"]
         persona = agent_data["persona"]
         backend_preference = agent_data["backend_preference"]
-        tools = agent_data.get("tools", [])
+        allowed_tools = agent_data.get("allowed_tools", [])
 
         # Type checks
         if not isinstance(name, str) or not name:
             raise ConfigError(f"agents[{idx}]: 'name' must be a non-empty string")
+        if name in seen_names:
+            raise ConfigError(f"agents[{idx}]: duplicate agent name '{name}'")
+        seen_names.add(name)
         if not isinstance(persona, str) or not persona:
             raise ConfigError(f"agents[{idx}] ({name}): 'persona' must be a non-empty string")
         if not isinstance(backend_preference, list) or len(backend_preference) == 0:
@@ -115,8 +119,13 @@ def load_config(
                 raise ConfigError(
                     f"agents[{idx}] ({name}): 'backend_preference' entries must be strings"
                 )
-        if not isinstance(tools, list):
-            raise ConfigError(f"agents[{idx}] ({name}): 'tools' must be a list")
+        if not isinstance(allowed_tools, list):
+            raise ConfigError(f"agents[{idx}] ({name}): 'allowed_tools' must be a list")
+        for tool in allowed_tools:
+            if not isinstance(tool, str) or not tool:
+                raise ConfigError(
+                    f"agents[{idx}] ({name}): 'allowed_tools' entries must be non-empty strings"
+                )
 
         # Validate persona file exists
         persona_file = personas_dir / f"{persona}.md"
@@ -130,7 +139,7 @@ def load_config(
                 name=name,
                 persona=persona,
                 backend_preference=list(backend_preference),
-                tools=list(tools),
+                allowed_tools=list(allowed_tools),
             )
         )
 
