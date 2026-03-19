@@ -32,7 +32,7 @@
     },
     {
       "type": "rectangle", "id": "channel_perms_box",
-      "x": 220, "y": 75, "width": 300, "height": 55,
+      "x": 200, "y": 75, "width": 340, "height": 55,
       "strokeColor": "#1e3a5f", "backgroundColor": "#93c5fd",
       "fillStyle": "solid", "strokeWidth": 2, "strokeStyle": "solid",
       "roughness": 0, "opacity": 100, "angle": 0,
@@ -43,7 +43,7 @@
     },
     {
       "type": "text", "id": "channel_perms_text",
-      "x": 225, "y": 85, "width": 290, "height": 25,
+      "x": 205, "y": 85, "width": 330, "height": 25,
       "text": "Channel Permissions (baseline)", "originalText": "Channel Permissions (baseline)",
       "fontSize": 18, "fontFamily": 3,
       "textAlign": "center", "verticalAlign": "middle",
@@ -135,7 +135,7 @@
     },
     {
       "type": "text", "id": "false_label",
-      "x": 490, "y": 240, "width": 70, "height": 20,
+      "x": 502, "y": 243, "width": 70, "height": 20,
       "text": "= false", "originalText": "= false",
       "fontSize": 14, "fontFamily": 3,
       "textAlign": "center", "verticalAlign": "top",
