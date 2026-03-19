@@ -144,5 +144,5 @@ class Dispatcher:
         )
 
     async def list_sessions(self) -> list:
-        """Return all sessions from the repository."""
-        return await self._repo.list_sessions()
+        """Return active sessions (ACTIVE or WAITING_FOR_HUMAN)."""
+        return await self._session_manager.list_active_sessions()
