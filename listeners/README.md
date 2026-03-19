@@ -15,6 +15,6 @@ Each listener is a standalone process (or Docker container) that:
 - **Uses**: `config` (for listener-specific settings)
 - **Independent of**: `tools`, `personas`
 
-## Status
+## Implemented Listeners
 
-Scaffold only. No listeners implemented yet.
+- **slack/**: Slack Socket Mode listener using `slack-bolt`. See `listeners/slack/README.md`.
