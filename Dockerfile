@@ -4,8 +4,9 @@ WORKDIR /app
 
 # Install dependencies first (cached layer)
 COPY pyproject.toml .
-RUN pip install --no-cache-dir $(python -c \
-    "import tomllib; print(' '.join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))")
+RUN python -c \
+    "import tomllib; print('\n'.join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))" \
+    > /tmp/requirements.txt && pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Copy source
 COPY . .
