@@ -259,6 +259,59 @@ class SessionManager:
         assert updated is not None, "session disappeared during update"
         return updated
 
+    async def get_attribution(self, session_id: str) -> str:
+        """Return the attribution label for a session.
+
+        Parameters
+        ----------
+        session_id:
+            ID of the session.
+
+        Returns
+        -------
+        str
+            The session's attribution label.
+
+        Raises
+        ------
+        KeyError
+            If no session with *session_id* exists.
+        """
+        session = await self._repo.get_session(session_id)
+        if session is None:
+            raise KeyError(f"Session {session_id!r} not found")
+        return session.attribution
+
+    async def set_attribution(
+        self, session_id: str, attribution: str,
+    ) -> SessionRow:
+        """Set the attribution label for a session.
+
+        Parameters
+        ----------
+        session_id:
+            ID of the session to update.
+        attribution:
+            New attribution label (e.g. ``"bot"``,
+            ``"[via terminal]"``).
+
+        Returns
+        -------
+        SessionRow
+            The updated session row.
+
+        Raises
+        ------
+        KeyError
+            If no session with *session_id* exists.
+        """
+        updated = await self._repo.update_session_attribution(
+            session_id, attribution,
+        )
+        if updated is None:
+            raise KeyError(f"Session {session_id!r} not found")
+        return updated
+
     async def list_active_sessions(self) -> list[SessionRow]:
         """Return all sessions in a live state (ACTIVE or WAITING_FOR_HUMAN)."""
         active = await self._repo.list_sessions(state="ACTIVE")

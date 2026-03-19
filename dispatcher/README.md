@@ -7,15 +7,17 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
 - `StandardMessage` — frozen dataclass representing the universal internal message format. Fields: `source`, `channel_ref`, `user_id`, `content`, `session_id` (optional). Includes `to_dict()` and `from_dict()` serialization helpers for JSON transport.
 - `init_db(db_path)` — async function that creates the SQLite schema (sessions, messages, channel_bindings tables) using `CREATE TABLE IF NOT EXISTS`. Safe to call on every startup.
 - `Repository(db)` — async repository abstraction layer for all database access. Takes an `aiosqlite.Connection`. Methods:
-  - Sessions: `create_session`, `get_session`, `update_session_state`, `update_session_agent`, `list_sessions`
+  - Sessions: `create_session`, `get_session`, `update_session_state`, `update_session_agent`, `update_session_attribution`, `list_sessions`
   - Messages: `save_message`, `get_messages_for_session`
   - Channel bindings: `add_channel_binding`, `get_bindings_for_session`, `find_session_by_channel`
-- Row dataclasses: `SessionRow`, `MessageRow`, `ChannelBindingRow` — frozen dataclasses for type-safe query results.
+- Row dataclasses: `SessionRow` (includes `attribution` field), `MessageRow`, `ChannelBindingRow` — frozen dataclasses for type-safe query results.
 - `SessionManager(repo)` — high-level session lifecycle manager wrapping the repository. Methods:
   - `get_or_create_session(message, agent_name)` — finds a live session by explicit ID or channel binding, or creates a new one
   - `get_session(session_id)` — retrieves a session by ID
   - `update_agent(session_id, agent_name)` — changes the agent assigned to a session
   - `update_state(session_id, new_state)` — transitions session state with validation of allowed transitions
+  - `get_attribution(session_id)` — returns the session's attribution label
+  - `set_attribution(session_id, attribution)` — sets a custom attribution label for message formatting
   - `list_active_sessions()` — returns all ACTIVE and WAITING_FOR_HUMAN sessions
 - `Dispatcher(session_manager, repo, executor, config, *, personas_dir=None)` — core routing class that accepts a `StandardMessage` and runs the full pipeline. Uses the loaded `DanClawConfig` to resolve which agent handles the message (currently selects the default/first agent; per-channel routing is planned for later). Loads the agent's persona via `load_persona` and passes it to the executor on each dispatch:
   - `dispatch(message) -> DispatchResult` — resolves the agent from config, resolves effective permissions for the message's channel + user via `resolve_permissions`, checks `requires_approval`, loads the agent's persona content, finds or creates a session, stores the inbound message, and proceeds to execution. If approval is required, the session is set to `WAITING_FOR_HUMAN` and an approval message is returned without calling the executor. When a new message arrives for a session in `WAITING_FOR_HUMAN` state, the session is automatically transitioned back to `ACTIVE` and the message is processed normally (the approval gate is skipped, treating the human's reply as implicit approval). This supports multi-turn flows where the bot asks a question and waits for the user's answer. Otherwise, calls the executor with the persona and resolved `allowed_tools`, stores the response, and returns a `DispatchResult`. Detects persona switch commands (`/switch <agent>` or `switch to <agent>`) and updates the session's agent accordingly. After a switch, subsequent messages use the new agent's persona.
