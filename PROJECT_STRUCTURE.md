@@ -25,7 +25,7 @@ danclaw/
 │   └── README.md             # Module documentation
 ├── dispatcher/
 │   ├── __init__.py           # Re-exports StandardMessage, init_db, Dispatcher, DispatchResult, etc.
-│   ├── __main__.py           # Entry point: config loading, signal handling, async loop
+│   ├── __main__.py           # Entry point: config loading, DB init, SocketServer startup, signal handling
 │   ├── database.py           # SQLite schema init (sessions, messages, channel_bindings)
 │   ├── dispatcher.py         # Core Dispatcher class: routes messages through session → executor → storage pipeline
 │   ├── executor.py           # AI executor protocol, ExecutorResult, and MockExecutor (canned responses)

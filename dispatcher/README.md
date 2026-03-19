@@ -43,15 +43,21 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
 
 ## Entry Point
 
-Run with `python -m dispatcher`. The `__main__.py` module:
+Run with `python -m dispatcher [config_path]`. The `__main__.py` module:
 
 1. Sets up Python logging (INFO level, stderr)
 2. Loads the JSON config via `config.load_config()`
-3. Logs readiness with agent count
-4. Installs signal handlers for SIGTERM and SIGINT
-5. Runs an asyncio event loop that waits for a shutdown signal
-6. Logs clean shutdown on exit
+3. Initialises the SQLite database schema via `init_db()`
+4. Wires up Repository, SessionManager, MockExecutor, and Dispatcher
+5. Starts the SocketServer on a Unix domain socket
+6. Logs readiness with agent count
+7. Installs signal handlers for SIGTERM and SIGINT
+8. Waits for a shutdown signal, then stops the SocketServer and exits cleanly
+
+Environment variables:
+- `DANCLAW_SOCKET` — Unix domain socket path (default: `/tmp/danclaw.sock`)
+- `DANCLAW_DB` — SQLite database path (default: `<project_root>/danclaw.db`)
 
 ## Status
 
-Dispatcher starts, loads config, logs readiness, and shuts down cleanly on signal. SQLite schema initialisation (`init_db`), repository abstraction layer (`Repository`), session lifecycle manager (`SessionManager`), mocked executor (`MockExecutor`), the core `Dispatcher` routing class, and the `SocketServer` Unix domain socket interface are available. The full pipeline (message in -> session -> executor -> store -> response) works end-to-end with the mock executor, accessible via Unix domain socket. The real AI executor backends (claude, codex) are planned for Phase 6.
+Dispatcher starts as a standalone process, loads config, initialises the database, starts the SocketServer on a Unix domain socket, and shuts down cleanly on signal. The CLI (`cli/agent.py`) connects to the dispatcher as a separate process over the Unix socket. SQLite schema initialisation (`init_db`), repository abstraction layer (`Repository`), session lifecycle manager (`SessionManager`), mocked executor (`MockExecutor`), the core `Dispatcher` routing class, and the `SocketServer` Unix domain socket interface are available. The full pipeline (message in -> session -> executor -> store -> response) works end-to-end with the mock executor, accessible via Unix domain socket. The real AI executor backends (claude, codex) are planned for Phase 6.
