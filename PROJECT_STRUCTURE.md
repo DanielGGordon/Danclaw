@@ -47,8 +47,11 @@ danclaw/
 ├── tools/
 │   ├── __init__.py           # Python package marker
 │   └── README.md             # Module documentation
+├── scripts/
+│   └── e2e_test.py           # Standalone end-to-end smoke test (requires claude CLI)
 └── tests/                    # Test suite
-    └── conftest.py           # Shared test helpers (make_config)
+    ├── conftest.py           # Shared test helpers (make_config)
+    └── test_e2e_claude.py    # End-to-end integration test via ClaudeExecutor (manual marker)
 ```
 
 ## Module Descriptions
