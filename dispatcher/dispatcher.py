@@ -23,6 +23,7 @@ from dispatcher.models import StandardMessage
 from dispatcher.permissions import resolve_permissions, requires_approval
 from dispatcher.repository import Repository
 from dispatcher.session_manager import SessionManager
+from dispatcher.telemetry import TelemetryCollector
 from personas import load_persona, PersonaError
 
 logger = logging.getLogger(__name__)
@@ -105,13 +106,20 @@ class Dispatcher:
         config: DanClawConfig,
         *,
         personas_dir: str | Path | None = None,
+        telemetry: TelemetryCollector | None = None,
     ) -> None:
         self._session_manager = session_manager
         self._repo = repo
         self._executor = executor
         self._config = config
         self._personas_dir = personas_dir
+        self._telemetry = telemetry
         self._last_resolved_permissions: frozenset[str] = frozenset()
+
+    def _emit(self, event_type: str, payload: dict | None = None) -> None:
+        """Record a telemetry event if a collector is configured."""
+        if self._telemetry is not None:
+            self._telemetry.record(event_type, payload)
 
     async def _fanout_channels(
         self, session_id: str, source_channel_ref: str,
@@ -142,43 +150,60 @@ class Dispatcher:
             Any exception from the executor is re-raised after setting
             the session state to ``ERROR``.
         """
-        # 1. Resolve agent from config (default agent for now)
+        # 1. Message received
+        self._emit("message_received", {
+            "source": message.source,
+            "channel_ref": message.channel_ref,
+            "user_id": message.user_id,
+        })
+
+        # 2. Resolve agent from config (default agent for now)
         agent = self._config.default_agent
         agent_name = agent.name
 
-        # 2. Find or create session
+        # 3. Find or create session
         session = await self._session_manager.get_or_create_session(
             message, agent_name,
         )
         session_id = session.id
+        self._emit("session_resolved", {
+            "session_id": session_id,
+            "agent_name": agent_name,
+            "state": session.state,
+        })
 
-        # 2a. Resume from WAITING_FOR_HUMAN — transition back to ACTIVE
+        # 3a. Resume from WAITING_FOR_HUMAN — transition back to ACTIVE
         resumed_from_waiting = False
         if session.state == "WAITING_FOR_HUMAN":
             session = await self._session_manager.update_state(
                 session_id, "ACTIVE",
             )
             resumed_from_waiting = True
+            self._emit("session_state_changed", {
+                "session_id": session_id,
+                "from_state": "WAITING_FOR_HUMAN",
+                "to_state": "ACTIVE",
+            })
             logger.info(
                 "Session %s resumed from WAITING_FOR_HUMAN to ACTIVE",
                 session_id,
             )
 
-        # 2b. Handle persona switch commands
+        # 3b. Handle persona switch commands
         switch_target = _parse_switch_command(message.content)
         if switch_target is not None:
             return await self._handle_switch(
                 message, session_id, switch_target,
             )
 
-        # 2c. If session already has an agent, use that agent's config
+        # 3c. If session already has an agent, use that agent's config
         #     (supports post-switch messages using the switched persona)
         session_agent = self._config.get_agent(session.agent_name)
         if session_agent is not None:
             agent = session_agent
             agent_name = agent.name
 
-        # 3. Resolve permissions for the channel + user
+        # 4. Resolve permissions for the channel + user
         allowed_tools = resolve_permissions(
             self._config.permissions, message.source, message.user_id,
         )
@@ -187,13 +212,20 @@ class Dispatcher:
         )
         self._last_resolved_permissions = allowed_tools
 
+        self._emit("permission_resolved", {
+            "source": message.source,
+            "user_id": message.user_id,
+            "allowed_tools_count": len(allowed_tools),
+            "approval_required": approval_needed,
+        })
+
         logger.info(
             "Resolved permissions for %s/%s: %d tools, approval=%s",
             message.source, message.user_id,
             len(allowed_tools), approval_needed,
         )
 
-        # 4. Load persona for the resolved agent
+        # 5. Load persona for the resolved agent
         persona_content: str | None = None
         try:
             persona_content = load_persona(
@@ -207,7 +239,7 @@ class Dispatcher:
                 agent.persona, agent_name,
             )
 
-        # 5. Store inbound message
+        # 6. Store inbound message
         await self._repo.save_message(
             session_id=session_id,
             role="user",
@@ -217,13 +249,23 @@ class Dispatcher:
             user_id=message.user_id,
         )
 
-        # 6. Approval gate — if approval is required, pause the session.
+        # 7. Approval gate — if approval is required, pause the session.
         #    Skip this gate when the session was just resumed from
         #    WAITING_FOR_HUMAN — the human's reply *is* the approval.
         if approval_needed and not resumed_from_waiting:
             await self._session_manager.update_state(
                 session_id, "WAITING_FOR_HUMAN",
             )
+            self._emit("approval_gate_triggered", {
+                "session_id": session_id,
+                "source": message.source,
+                "user_id": message.user_id,
+            })
+            self._emit("session_state_changed", {
+                "session_id": session_id,
+                "from_state": "ACTIVE",
+                "to_state": "WAITING_FOR_HUMAN",
+            })
             approval_msg = (
                 "This request requires approval before it can be executed. "
                 "A human must approve this session to continue."
@@ -256,20 +298,40 @@ class Dispatcher:
             session_id, agent_name,
         )
 
-        # 7. Execute
+        # 8. Execute
+        self._emit("executor_invoked", {
+            "session_id": session_id,
+            "agent_name": agent_name,
+        })
         try:
             result: ExecutorResult = await self._executor.execute(
                 message, persona=persona_content,
                 allowed_tools=allowed_tools,
             )
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "Executor failed for session %s", session_id,
             )
+            self._emit("error", {
+                "session_id": session_id,
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+            })
             await self._session_manager.update_state(session_id, "ERROR")
+            self._emit("session_state_changed", {
+                "session_id": session_id,
+                "from_state": "ACTIVE",
+                "to_state": "ERROR",
+            })
             raise
 
-        # 8. Store response
+        # 9. Executor response received
+        self._emit("executor_response", {
+            "session_id": session_id,
+            "backend": result.backend,
+        })
+
+        # 10. Store response
         await self._repo.save_message(
             session_id=session_id,
             role="assistant",
@@ -284,7 +346,7 @@ class Dispatcher:
             session_id, result.backend,
         )
 
-        # 9. Gather fanout channels and return result
+        # 11. Gather fanout channels and return result
         fanout = await self._fanout_channels(session_id, message.channel_ref)
         return DispatchResult(
             session_id=session_id,
