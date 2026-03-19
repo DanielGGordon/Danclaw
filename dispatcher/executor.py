@@ -170,7 +170,7 @@ class ClaudeExecutor:
         raw = stdout.decode(errors="replace").strip()
         try:
             data = json.loads(raw)
-            content = data.get("result", "")
+            content = data.get("result", "") if isinstance(data, dict) else raw
         except (json.JSONDecodeError, TypeError):
             content = raw
             data = {}
