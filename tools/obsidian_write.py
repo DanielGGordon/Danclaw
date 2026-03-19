@@ -15,9 +15,7 @@ import argparse
 import sys
 from pathlib import Path
 
-
-class VaultError(Exception):
-    """Raised when a vault operation fails."""
+from tools._vault import VaultError, resolve_path_in_vault, resolve_vault
 
 
 def write_file(vault: str | Path, file_path: str, content: str) -> str:
@@ -37,15 +35,8 @@ def write_file(vault: str | Path, file_path: str, content: str) -> str:
         VaultError: If the vault doesn't exist, the path escapes the vault,
             or the file cannot be written.
     """
-    vault = Path(vault).resolve()
-    if not vault.is_dir():
-        raise VaultError(f"Vault directory does not exist: {vault}")
-
-    target = (vault / file_path).resolve()
-
-    # Prevent path traversal outside the vault.
-    if not str(target).startswith(str(vault) + "/") and target != vault:
-        raise VaultError(f"Path escapes vault: {file_path}")
+    vault = resolve_vault(vault)
+    target = resolve_path_in_vault(vault, file_path)
 
     existed = target.is_file()
 

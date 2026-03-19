@@ -18,9 +18,7 @@ import fnmatch
 import sys
 from pathlib import Path
 
-
-class VaultError(Exception):
-    """Raised when a vault operation fails."""
+from tools._vault import VaultError, is_path_within_vault, resolve_vault
 
 
 def search_files(
@@ -48,9 +46,7 @@ def search_files(
     Raises:
         VaultError: If the vault doesn't exist.
     """
-    vault = Path(vault).resolve()
-    if not vault.is_dir():
-        raise VaultError(f"Vault directory does not exist: {vault}")
+    vault = resolve_vault(vault)
 
     results: list[str] = []
 
@@ -60,7 +56,7 @@ def search_files(
 
         # Prevent symlink-based escapes outside the vault.
         resolved = path.resolve()
-        if not str(resolved).startswith(str(vault) + "/"):
+        if not is_path_within_vault(resolved, vault):
             continue
 
         # Skip hidden files/directories (e.g., .obsidian/, .git/).

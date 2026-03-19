@@ -8,15 +8,15 @@ from pathlib import Path
 
 import pytest
 
-from tools.obsidian_read import VaultError as ReadVaultError
+from tools._vault import VaultError
 from tools.obsidian_read import main as read_main
 from tools.obsidian_read import read_file
-from tools.obsidian_search import VaultError as SearchVaultError
 from tools.obsidian_search import main as search_main
 from tools.obsidian_search import search_files
-from tools.obsidian_write import VaultError as WriteVaultError
 from tools.obsidian_write import main as write_main
 from tools.obsidian_write import write_file
+
+ReadVaultError = WriteVaultError = SearchVaultError = VaultError
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────
