@@ -103,7 +103,7 @@ class SocketServer:
                 response = await self._process_line(line)
                 writer.write(response.encode("utf-8") + b"\n")
                 await writer.drain()
-        except ConnectionResetError:
+        except ConnectionError:
             logger.debug("Client disconnected abruptly: %s", peer)
         finally:
             writer.close()
