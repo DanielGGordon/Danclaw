@@ -15,7 +15,7 @@ A session-centric multi-agent platform that runs on a dedicated Raspberry Pi 5 (
 - **An executor layer** that runs Claude Code (`claude -p`) as the primary AI backend with OpenAI Codex CLI as a configurable fallback
 - **Tool scripts** that give agents real-world capabilities (Obsidian, Slack messaging, git operations, etc.)
 
-[Architecture Overview — open in Excalidraw](diagrams/architecture.excalidraw)
+![Architecture Overview](diagrams/architecture.png)
 
 ### Listener Interface Contract
 
@@ -23,15 +23,15 @@ Every listener — current and future — implements the same contract. The disp
 
 Every listener implements the same contract:
 
-[Listener Contract — open in Excalidraw](diagrams/listener-contract.excalidraw)
+![Listener Contract](diagrams/listener-contract.png)
 
 ### Permission Model
 
-[Permission Resolution — open in Excalidraw](diagrams/permission-resolution.excalidraw)
+![Permission Resolution](diagrams/permission-resolution.png)
 
 ### Bidirectional Conversation Flow
 
-[Conversation Flow — open in Excalidraw](diagrams/conversation-flow.excalidraw)
+![Conversation Flow](diagrams/conversation-flow.png)
 
 ## User Stories
 
