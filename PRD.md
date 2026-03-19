@@ -15,82 +15,7 @@ A session-centric multi-agent platform that runs on a dedicated Raspberry Pi 5 (
 - **An executor layer** that runs Claude Code (`claude -p`) as the primary AI backend with OpenAI Codex CLI as a configurable fallback
 - **Tool scripts** that give agents real-world capabilities (Obsidian, Slack messaging, git operations, etc.)
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                          LISTENERS                                   │
-│       All listeners implement the same interface:                    │
-│       receive() → StandardMessage, send(response) → channel         │
-│                                                                      │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────────────────────┐ │
-│  │ Slack    │ │Terminal/ │ │ WhatsApp │ │ Future:                   │ │
-│  │ (Socket  │ │ SSH      │ │ (Webhook)│ │ SMS, Chrome, MCP,         │ │
-│  │  Mode)   │ │ (Unix    │ │          │ │ Email, Telegram,          │ │
-│  │          │ │  Socket) │ │          │ │ Voice (Twilio+ElevenLabs) │ │
-│  │          │ │          │ │          │ │                           │ │
-│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └─────────────┬─────────────┘ │
-│       │            │            │                      │       │
-└───────┼────────────┼────────────┼──────────────────────┼───────┘
-        │            │            │                      │
-        ▼            ▼            ▼                      ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                    INTERNAL API (Channel-Agnostic)                    │
-│         Unix Socket (local) + HTTP (webhook-based listeners)         │
-│         Accepts/returns StandardMessage format only                   │
-└──────────────────────────────┬───────────────────────────────────────┘
-                               │
-                               ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                          DISPATCHER                                  │
-│                                                                      │
-│  ┌──────────────┐  ┌───────────────┐  ┌───────────────────────────┐ │
-│  │ Session       │  │ Permission    │  │ Agent                     │ │
-│  │ Manager       │  │ Resolver      │  │ Router                    │ │
-│  │               │  │               │  │                           │ │
-│  │ - find/create │  │ - channel     │  │ - match request to agent  │ │
-│  │   sessions    │  │   perms       │  │   definition              │ │
-│  │ - track state │  │ - user perms  │  │ - spawn/resume agent      │ │
-│  │ - bridge      │  │ - override    │  │   process                 │ │
-│  │   channels    │  │   flags       │  │                           │ │
-│  └──────┬───────┘  └──────┬────────┘  └────────────┬──────────────┘ │
-│         │                 │                         │                │
-└─────────┼─────────────────┼─────────────────────────┼────────────────┘
-          │                 │                         │
-          ▼                 ▼                         ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                     SESSION STORE (SQLite)                            │
-│                                                                      │
-│  Sessions | Messages | Channel Bindings | Event Log                  │
-│                                                                      │
-│  (Local-first, swappable backend, archival-ready)                    │
-└──────────────────────────────┬───────────────────────────────────────┘
-                               │
-                               ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                       EXECUTOR LAYER                                 │
-│                                                                      │
-│  ┌──────────────────────┐  ┌───────────────────────────────────────┐ │
-│  │ claude -p --resume    │  │ codex (fallback)                     │ │
-│  │                       │  │                                      │ │
-│  │ Primary backend       │◄─┤ Activated on credit exhaust,         │ │
-│  │ Session persistence   │  │ timeout, or config preference        │ │
-│  └──────────┬────────────┘  └───────────────────────────────────────┘ │
-│             │                                                        │
-└─────────────┼────────────────────────────────────────────────────────┘
-              │
-              ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                           TOOLS                                      │
-│                                                                      │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────────────────────┐ │
-│  │ Obsidian │ │ Slack    │ │ Git/     │ │ Future:                   │ │
-│  │ (vault   │ │ Send     │ │ Deploy   │ │ Calendar, Email,          │ │
-│  │  r/w)    │ │          │ │          │ │ Any API...                │ │
-│  │          │ │          │ │          │ │                           │ │
-│  └──────────┘ └──────────┘ └──────────┘ └───────────────────────────┘ │
-│                                                                      │
-│  Each tool is a standalone script, registered per-agent              │
-└──────────────────────────────────────────────────────────────────────┘
-```
+[Architecture Overview — open in Excalidraw](diagrams/architecture.excalidraw)
 
 ### Listener Interface Contract
 
@@ -98,100 +23,15 @@ Every listener — current and future — implements the same contract. The disp
 
 Every listener implements the same contract:
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                      LISTENER CONTRACT                        │
-│                                                              │
-│  Every listener must:                                        │
-│                                                              │
-│  1. Receive a message from the outside world                 │
-│  2. Translate it to a StandardMessage:                       │
-│     - source (e.g., "slack", "terminal", "sms")              │
-│     - channel_ref (e.g., Slack thread_ts, terminal tty)      │
-│     - user_id                                                │
-│     - content (text)                                         │
-│     - session_id (if resuming an existing conversation)      │
-│  3. Send it to the dispatcher via Unix socket or HTTP        │
-│  4. Receive agent responses and translate back to the        │
-│     channel's native format                                  │
-│                                                              │
-│  Adding a new channel = write a listener + register in       │
-│  config. No dispatcher or agent changes needed.              │
-│                                                              │
-│  Known future listeners:                                     │
-│  Slack, Terminal, SMS, WhatsApp, Chrome Extension,           │
-│  ChatGPT (MCP server), Email, Telegram, Calendar, Webhooks  │
-└──────────────────────────────────────────────────────────────┘
-```
+[Listener Contract — open in Excalidraw](diagrams/listener-contract.excalidraw)
 
 ### Permission Model
 
-```
-┌──────────────────────────────────────────────────────┐
-│                  PERMISSION RESOLUTION                │
-│                                                      │
-│  Channel Permissions (baseline)                      │
-│       │                                              │
-│       ├── override_flag = false ──┐                  │
-│       │                          ▼                   │
-│       │              Channel Perms + User Perms      │
-│       │              (user perms are additive)       │
-│       │                                              │
-│       └── override_flag = true ──┐                   │
-│                                  ▼                   │
-│                      Channel Perms ONLY              │
-│                      (user perms ignored)            │
-│                                                      │
-│  Examples:                                           │
-│  - #email-only: override=true, tools=[email]         │
-│    → Even admin can only do email here               │
-│                                                      │
-│  - #dan-tasks: override=false, tools=[tasks]         │
-│    → Friend gets tasks only                          │
-│    → Dan's user perms add admin tools                │
-│                                                      │
-│  - #admin: override=false, tools=[all]               │
-│    → No approval gates, full system access           │
-│    → Can modify agent code and trigger deploy        │
-└──────────────────────────────────────────────────────┘
-```
+[Permission Resolution — open in Excalidraw](diagrams/permission-resolution.excalidraw)
 
 ### Bidirectional Conversation Flow
 
-```
-┌─────────┐         ┌────────────┐        ┌───────┐
-│  Human  │         │ Dispatcher │        │ Agent │
-└────┬────┘         └─────┬──────┘        └───┬───┘
-     │                    │                   │
-     │  "Add dark mode"   │                   │
-     │───────────────────►│                   │
-     │                    │  create session   │
-     │                    │  resolve perms    │
-     │                    │  spawn agent      │
-     │                    │──────────────────►│
-     │                    │                   │
-     │                    │  "Which dashboard?"│
-     │                    │◄──────────────────│
-     │                    │  state=WAITING    │
-     │  "Customer-facing" │                   │
-     │◄───────────────────│                   │
-     │                    │                   │
-     │  "Customer-facing" │                   │
-     │───────────────────►│                   │
-     │                    │  resume session   │
-     │                    │──────────────────►│
-     │                    │                   │
-     │                    │  "Done. PR #42"   │
-     │                    │◄──────────────────│
-     │                    │  state=DONE       │
-     │  "Done. PR #42"   │                   │
-     │◄───────────────────│                   │
-     │                    │                   │
-
-  Channel bridging: at any point, another listener
-  (e.g., terminal) can attach to the same session.
-  Messages flow to ALL bound channels.
-```
+[Conversation Flow — open in Excalidraw](diagrams/conversation-flow.excalidraw)
 
 ## User Stories
 
