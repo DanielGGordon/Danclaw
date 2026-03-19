@@ -63,7 +63,8 @@ danclaw/
 │   └── e2e_test.py           # Standalone end-to-end smoke test (requires claude CLI)
 └── tests/                    # Test suite
     ├── conftest.py           # Shared test helpers (make_config)
-    └── test_e2e_claude.py    # End-to-end integration test via ClaudeExecutor (manual marker)
+    ├── test_e2e_claude.py    # End-to-end integration test via ClaudeExecutor (manual marker)
+    └── test_telemetry_query.py # Tests for telemetry query/filter/pagination methods
 ```
 
 ## Module Descriptions
