@@ -73,6 +73,7 @@ danclaw/
     ├── test_git_ops.py       # Tests for git add/commit/push tool functions and CLI
     ├── test_git_ops_telemetry.py # Tests for telemetry-instrumented git operation wrappers
     ├── test_deploy.py          # Tests for deploy tool: pull, build, restart sequence
+    ├── test_deploy_restriction.py # Tests for deploy restriction: non-admin channels/users cannot trigger deploy
     ├── test_deploy_telemetry.py # Tests for telemetry-instrumented deploy wrapper
     ├── test_trigger_deploy.py   # Tests for agent-triggered deploy: tool, telemetry, permissions, and dispatcher integration
     └── test_telemetry_query.py # Tests for telemetry query/filter/pagination methods

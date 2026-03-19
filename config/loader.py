@@ -46,10 +46,15 @@ class PermissionsConfig:
     Attributes:
         channels: Mapping of channel name to :class:`ChannelPermissions`.
         users: Mapping of user identifier to :class:`UserPermissions`.
+        restricted_tools: Tool names that can only be granted via channel
+            permissions, never via user ``additional_tools``.  This prevents
+            users from escalating their own access to sensitive operations
+            (e.g. deploy) on channels that don't explicitly allow them.
     """
 
     channels: dict[str, ChannelPermissions] = field(default_factory=dict)
     users: dict[str, UserPermissions] = field(default_factory=dict)
+    restricted_tools: frozenset[str] = field(default_factory=frozenset)
 
 
 @dataclass(frozen=True)
@@ -361,7 +366,19 @@ def _parse_permissions(raw: object) -> PermissionsConfig:
             approval_required=approval_required,
         )
 
-    return PermissionsConfig(channels=channels, users=users)
+    restricted_raw = raw.get("restricted_tools", [])
+    if not isinstance(restricted_raw, list):
+        raise ConfigError("'permissions.restricted_tools' must be a list")
+    for tool in restricted_raw:
+        if not isinstance(tool, str) or not tool:
+            raise ConfigError(
+                "'permissions.restricted_tools' entries must be non-empty strings"
+            )
+
+    return PermissionsConfig(
+        channels=channels, users=users,
+        restricted_tools=frozenset(restricted_raw),
+    )
 
 
 def load_config(

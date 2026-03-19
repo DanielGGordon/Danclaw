@@ -242,8 +242,8 @@ An admin channel/agent that can modify the system's own code, commit, push to gi
 - [x] Deploy script: pulls latest from git, rebuilds Docker images if needed, restarts affected services
 - [x] Deploy triggered by the agent via a tool script
 - [x] Admin channel configured with no approval override
-- [ ] Telemetry events emitted for deploy actions
-- [ ] Non-admin users/channels cannot trigger deploy
+- [x] Telemetry events emitted for deploy actions
+- [x] Non-admin users/channels cannot trigger deploy
 
 ---
 
