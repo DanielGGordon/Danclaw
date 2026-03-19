@@ -51,6 +51,11 @@ class JSONFormatter(logging.Formatter):
             "message": record.message,
         }
 
+        if record.exc_info and record.exc_info[0] is not None:
+            entry["traceback"] = self.formatException(record.exc_info)
+        if record.stack_info:
+            entry["stack_info"] = self.formatStack(record.stack_info)
+
         # Merge extra context fields.
         for key, value in record.__dict__.items():
             if key not in self._RESERVED:
