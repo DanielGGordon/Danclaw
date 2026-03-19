@@ -53,6 +53,28 @@ class PermissionsConfig:
 
 
 @dataclass(frozen=True)
+class ObsidianToolConfig:
+    """Configuration for the Obsidian tool.
+
+    Attributes:
+        vault_path: Absolute path to the Obsidian vault directory.
+    """
+
+    vault_path: str
+
+
+@dataclass(frozen=True)
+class ToolsConfig:
+    """Container for tool-specific settings.
+
+    Attributes:
+        obsidian: Optional Obsidian tool configuration.
+    """
+
+    obsidian: ObsidianToolConfig | None = None
+
+
+@dataclass(frozen=True)
 class AgentConfig:
     """Configuration for a single agent.
 
@@ -85,6 +107,7 @@ class DanClawConfig:
     agents: list[AgentConfig]
     listeners: dict = field(default_factory=dict)
     permissions: PermissionsConfig = field(default_factory=PermissionsConfig)
+    tools: ToolsConfig = field(default_factory=ToolsConfig)
 
     @property
     def default_agent(self) -> AgentConfig:
@@ -169,6 +192,40 @@ def validate_config(
     if errors:
         detail = "; ".join(errors)
         raise ConfigError(f"Config validation failed: {detail}")
+
+
+def _parse_tools(raw: object) -> ToolsConfig:
+    """Parse and validate the ``tools`` section of the config.
+
+    Args:
+        raw: The raw value from the JSON config (expected to be a dict).
+
+    Returns:
+        A validated :class:`ToolsConfig`.
+
+    Raises:
+        ConfigError: On any structural or type error.
+    """
+    if not isinstance(raw, dict):
+        raise ConfigError("'tools' must be a JSON object")
+
+    obsidian: ObsidianToolConfig | None = None
+    obsidian_raw = raw.get("obsidian")
+    if obsidian_raw is not None:
+        if not isinstance(obsidian_raw, dict):
+            raise ConfigError("'tools.obsidian' must be a JSON object")
+        if "vault_path" not in obsidian_raw:
+            raise ConfigError(
+                "'tools.obsidian' is missing required field 'vault_path'"
+            )
+        vault_path = obsidian_raw["vault_path"]
+        if not isinstance(vault_path, str) or not vault_path:
+            raise ConfigError(
+                "'tools.obsidian.vault_path' must be a non-empty string"
+            )
+        obsidian = ObsidianToolConfig(vault_path=vault_path)
+
+    return ToolsConfig(obsidian=obsidian)
 
 
 def _parse_permissions(raw: object) -> PermissionsConfig:
@@ -399,7 +456,12 @@ def load_config(
     # --- Validate permissions ---
     permissions = _parse_permissions(data.get("permissions", {}))
 
-    config = DanClawConfig(agents=agents, listeners=listeners, permissions=permissions)
+    # --- Validate tools ---
+    tools = _parse_tools(data.get("tools", {}))
+
+    config = DanClawConfig(
+        agents=agents, listeners=listeners, permissions=permissions, tools=tools,
+    )
 
     # Validate that all referenced persona files and tool scripts exist.
     validate_config(config, personas_dir=personas_dir, tools_dir=tools_dir)

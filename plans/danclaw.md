@@ -198,7 +198,7 @@ The first real tool: read and write files in an Obsidian vault. Registered per-a
 ### Acceptance criteria
 
 - [x] Obsidian tool script(s) in `tools/`: read file, write file, search/list files in vault
-- [ ] Vault path configurable in JSON config
+- [x] Vault path configurable in JSON config
 - [ ] Tool registered in agent config and only available to agents that have it in their allowed tools list
 - [ ] Permission-gated: a user without Obsidian tool access cannot trigger it
 - [ ] End-to-end: Slack message → agent reads an Obsidian note → responds with content in Slack thread

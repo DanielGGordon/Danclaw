@@ -7,7 +7,15 @@ from pathlib import Path
 
 import pytest
 
-from config.loader import AgentConfig, ConfigError, DanClawConfig, load_config, validate_config
+from config.loader import (
+    AgentConfig,
+    ConfigError,
+    DanClawConfig,
+    ObsidianToolConfig,
+    ToolsConfig,
+    load_config,
+    validate_config,
+)
 
 
 @pytest.fixture()
@@ -711,3 +719,170 @@ class TestAgentConfigFallbackNotification:
                 personas_dir=tmp_project.personas,
                 tools_dir=tmp_project.tools,
             )
+
+
+# ── Tools config ─────────────────────────────────────────────────────
+
+
+class TestToolsConfig:
+    """Tests for the tools configuration section."""
+
+    def test_tools_defaults_to_empty_when_omitted(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "default",
+                "persona": "default",
+                "backend_preference": ["claude"],
+            }],
+        })
+        cfg = load_config(
+            tmp_project.config / "danclaw.json",
+            personas_dir=tmp_project.personas,
+            tools_dir=tmp_project.tools,
+        )
+        assert cfg.tools == ToolsConfig()
+        assert cfg.tools.obsidian is None
+
+    def test_tools_empty_object_is_valid(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "default",
+                "persona": "default",
+                "backend_preference": ["claude"],
+            }],
+            "tools": {},
+        })
+        cfg = load_config(
+            tmp_project.config / "danclaw.json",
+            personas_dir=tmp_project.personas,
+            tools_dir=tmp_project.tools,
+        )
+        assert cfg.tools.obsidian is None
+
+    def test_tools_not_a_dict_raises_config_error(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "default",
+                "persona": "default",
+                "backend_preference": ["claude"],
+            }],
+            "tools": "bad",
+        })
+        with pytest.raises(ConfigError, match="'tools' must be a JSON object"):
+            load_config(
+                tmp_project.config / "danclaw.json",
+                personas_dir=tmp_project.personas,
+                tools_dir=tmp_project.tools,
+            )
+
+    def test_obsidian_vault_path_loaded(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "default",
+                "persona": "default",
+                "backend_preference": ["claude"],
+            }],
+            "tools": {
+                "obsidian": {"vault_path": "/home/user/vault"},
+            },
+        })
+        cfg = load_config(
+            tmp_project.config / "danclaw.json",
+            personas_dir=tmp_project.personas,
+            tools_dir=tmp_project.tools,
+        )
+        assert cfg.tools.obsidian is not None
+        assert cfg.tools.obsidian.vault_path == "/home/user/vault"
+
+    def test_obsidian_not_a_dict_raises_config_error(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "default",
+                "persona": "default",
+                "backend_preference": ["claude"],
+            }],
+            "tools": {"obsidian": "bad"},
+        })
+        with pytest.raises(ConfigError, match="'tools.obsidian' must be a JSON object"):
+            load_config(
+                tmp_project.config / "danclaw.json",
+                personas_dir=tmp_project.personas,
+                tools_dir=tmp_project.tools,
+            )
+
+    def test_obsidian_missing_vault_path_raises_config_error(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "default",
+                "persona": "default",
+                "backend_preference": ["claude"],
+            }],
+            "tools": {"obsidian": {}},
+        })
+        with pytest.raises(ConfigError, match="missing required field 'vault_path'"):
+            load_config(
+                tmp_project.config / "danclaw.json",
+                personas_dir=tmp_project.personas,
+                tools_dir=tmp_project.tools,
+            )
+
+    def test_obsidian_vault_path_empty_string_raises_config_error(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "default",
+                "persona": "default",
+                "backend_preference": ["claude"],
+            }],
+            "tools": {"obsidian": {"vault_path": ""}},
+        })
+        with pytest.raises(ConfigError, match="vault_path.*non-empty string"):
+            load_config(
+                tmp_project.config / "danclaw.json",
+                personas_dir=tmp_project.personas,
+                tools_dir=tmp_project.tools,
+            )
+
+    def test_obsidian_vault_path_not_string_raises_config_error(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "default",
+                "persona": "default",
+                "backend_preference": ["claude"],
+            }],
+            "tools": {"obsidian": {"vault_path": 123}},
+        })
+        with pytest.raises(ConfigError, match="vault_path.*non-empty string"):
+            load_config(
+                tmp_project.config / "danclaw.json",
+                personas_dir=tmp_project.personas,
+                tools_dir=tmp_project.tools,
+            )
+
+    def test_obsidian_tool_config_is_frozen(self):
+        oc = ObsidianToolConfig(vault_path="/some/path")
+        with pytest.raises(AttributeError):
+            oc.vault_path = "/other"
+
+    def test_tools_config_is_frozen(self):
+        tc = ToolsConfig()
+        with pytest.raises(AttributeError):
+            tc.obsidian = None
+
+    def test_tools_config_on_danclaw_config_is_frozen(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "default",
+                "persona": "default",
+                "backend_preference": ["claude"],
+            }],
+            "tools": {
+                "obsidian": {"vault_path": "/vault"},
+            },
+        })
+        cfg = load_config(
+            tmp_project.config / "danclaw.json",
+            personas_dir=tmp_project.personas,
+            tools_dir=tmp_project.tools,
+        )
+        with pytest.raises(AttributeError):
+            cfg.tools = ToolsConfig()

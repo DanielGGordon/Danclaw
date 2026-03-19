@@ -6,19 +6,21 @@ Configuration loading and validation. Reads the JSON config file that defines ag
 
 - `danclaw.json` — Main JSON config defining agents and listener settings.
 - `loader.py` — Config loader module: reads, validates, and returns structured config objects.
-- `__init__.py` — Re-exports `load_config`, `validate_config`, `DanClawConfig`, `AgentConfig`, `ChannelPermissions`, `UserPermissions`, `PermissionsConfig`, `ConfigError`.
+- `__init__.py` — Re-exports `load_config`, `validate_config`, `DanClawConfig`, `AgentConfig`, `ChannelPermissions`, `UserPermissions`, `PermissionsConfig`, `ToolsConfig`, `ObsidianToolConfig`, `ConfigError`.
 
 ## Public Interface
 
 - `load_config(path, *, personas_dir=None, tools_dir=None)` — Reads and validates the JSON config file, returns a `DanClawConfig` instance. Raises `ConfigError` on any validation failure. Validates that all referenced persona files and tool scripts exist.
 - `validate_config(config, *, personas_dir, tools_dir)` — Validates that all agent persona files and tool scripts exist on disk. Collects all errors and reports them together in a single `ConfigError`. Can be called independently of `load_config`.
-- `DanClawConfig` — Frozen dataclass: `agents: list[AgentConfig]`, `listeners: dict`, `permissions: PermissionsConfig`.
+- `DanClawConfig` — Frozen dataclass: `agents: list[AgentConfig]`, `listeners: dict`, `permissions: PermissionsConfig`, `tools: ToolsConfig`.
   - `default_agent` — Property returning the first agent in the list. Raises `ConfigError` if no agents are configured.
   - `get_agent(name)` — Looks up an agent by name. Returns `None` if not found.
 - `AgentConfig` — Frozen dataclass: `name`, `persona`, `backend_preference`, `allowed_tools`, `timeout` (int, seconds, default 120), `fallback_notification` (string, default `"silent"`).
 - `PermissionsConfig` — Frozen dataclass: `channels: dict[str, ChannelPermissions]`, `users: dict[str, UserPermissions]`. Defaults to empty dicts when omitted from config.
 - `ChannelPermissions` — Frozen dataclass: `allowed_tools: list[str]`, `override: bool`, `approval_required: bool`. The `override` flag, when True, locks the channel to channel-only permissions (user permissions are ignored). The `approval_required` flag, when True, requires confirmation before high-impact actions on this channel.
 - `UserPermissions` — Frozen dataclass: `additional_tools: list[str]`, `approval_required: bool`. Extra tools granted to a user, additive on top of the channel baseline. The `approval_required` flag, when True, requires confirmation before high-impact actions by this user.
+- `ToolsConfig` — Frozen dataclass: `obsidian: ObsidianToolConfig | None`. Container for tool-specific settings. Defaults to all-`None` when `tools` section is omitted from config.
+- `ObsidianToolConfig` — Frozen dataclass: `vault_path: str`. Configuration for the Obsidian tool, specifying the absolute path to the vault directory.
 - `ConfigError` — Exception raised for invalid or missing config.
 
 ## Validation Rules
@@ -36,6 +38,8 @@ Configuration loading and validation. Reads the JSON config file that defines ag
 - `permissions` is optional (defaults to empty channels/users). When present:
   - `permissions.channels` maps channel names to objects with `allowed_tools` (list of strings, default `[]`), `override` (boolean, default `false`), and `approval_required` (boolean, default `false`).
   - `permissions.users` maps user identifiers to objects with `additional_tools` (list of strings, default `[]`) and `approval_required` (boolean, default `false`).
+- `tools` is optional (defaults to empty). When present, must be a JSON object with tool-specific settings:
+  - `tools.obsidian` (optional): object with `vault_path` (required non-empty string) specifying the absolute path to the Obsidian vault directory.
 
 ## Relationship to Other Modules
 
@@ -45,4 +49,4 @@ Configuration loading and validation. Reads the JSON config file that defines ag
 
 ## Status
 
-Config loader implemented and tested (63 tests).
+Config loader implemented and tested (74 tests).
