@@ -92,20 +92,6 @@ async def _send_recv(socket_path: Path, data: dict | str) -> dict:
         await writer.wait_closed()
 
 
-async def _send_recv_raw(socket_path: Path, raw_bytes: bytes) -> dict:
-    """Send raw bytes to the socket and return the parsed response."""
-    reader, writer = await asyncio.open_unix_connection(str(socket_path))
-    try:
-        writer.write(raw_bytes)
-        await writer.drain()
-
-        response_line = await reader.readline()
-        return json.loads(response_line)
-    finally:
-        writer.close()
-        await writer.wait_closed()
-
-
 # ── Server lifecycle ─────────────────────────────────────────────────
 
 
