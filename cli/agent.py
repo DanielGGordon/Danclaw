@@ -189,13 +189,17 @@ def _fanout_reader(
         while b"\n" in buf:
             idx = buf.index(b"\n")
             line = bytes(buf[:idx])
-            del buf[:idx + 1]
             try:
                 msg = json.loads(line)
             except (json.JSONDecodeError, UnicodeDecodeError):
+                del buf[:idx + 1]
                 continue
             if msg.get("type") == "fanout":
+                del buf[:idx + 1]
                 _print_fanout(msg, print_fn)
+            else:
+                # Leave non-fanout messages in the buffer for _send_recv
+                break
 
 
 def _chat_loop(
@@ -270,6 +274,8 @@ def _chat_loop(
             # Stop the reader while we do a synchronous send/recv
             stop_event.set()
             reader_thread.join(timeout=2)
+            if reader_thread.is_alive():
+                reader_thread.join()
 
             try:
                 resp = _send_recv(sock, msg, print_fn=print_fn, buf=buf)
@@ -296,6 +302,8 @@ def _chat_loop(
     finally:
         stop_event.set()
         reader_thread.join(timeout=2)
+        if reader_thread.is_alive():
+            reader_thread.join()
 
     return channel_ref
 

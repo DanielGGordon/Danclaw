@@ -138,7 +138,7 @@ class SocketServer:
                     # Client disconnected
                     break
 
-                response, channel_ref = await self._process_line(line, writer)
+                response, channel_ref = await self._process_line(line)
                 if channel_ref and channel_ref not in self._connected_clients:
                     self._connected_clients[channel_ref] = writer
                     registered_refs.append(channel_ref)
@@ -159,7 +159,6 @@ class SocketServer:
     async def _process_line(
         self,
         line: bytes,
-        writer: Optional[asyncio.StreamWriter] = None,
     ) -> tuple[str, Optional[str]]:
         """Parse a JSON line, dispatch it, and return ``(response, channel_ref)``.
 
