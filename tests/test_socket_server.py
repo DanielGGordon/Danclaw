@@ -860,3 +860,231 @@ async def test_detach_unregisters_client(server, socket_path, db):
     finally:
         w.close()
         await w.wait_closed()
+
+
+# ── Fanout poster (external channel posting) ─────────────────────────
+
+
+@pytest_asyncio.fixture
+async def poster_calls():
+    """Return a list that captures fanout poster calls."""
+    return []
+
+
+@pytest_asyncio.fixture
+async def server_with_poster(dispatcher, socket_path, poster_calls):
+    """Start a SocketServer with a fanout_poster and yield it."""
+    async def poster(channel_ref: str, text: str) -> None:
+        poster_calls.append((channel_ref, text))
+
+    srv = SocketServer(dispatcher, socket_path, fanout_poster=poster)
+    await srv.start()
+    yield srv
+    await srv.stop()
+
+
+@pytest.mark.asyncio
+async def test_fanout_poster_called_for_unconnected_slack_channel(
+    server_with_poster, socket_path, db, poster_calls,
+):
+    """When a terminal dispatches and a Slack channel is bound, the poster is called.
+
+    Default attribution is "bot", so user messages appear without a
+    ``[via ...]`` prefix — they look as if the bot posted them.
+    """
+    # Create session from terminal
+    r1 = await _send_recv(socket_path, _msg_dict(content="hello"))
+    session_id = r1["session_id"]
+
+    # Bind a Slack channel (not connected via socket)
+    repo = Repository(db)
+    await repo.add_channel_binding(session_id, "slack", "C123:ts456")
+
+    # Send another message from terminal
+    r2 = await _send_recv(socket_path, _msg_dict(content="what is the weather"))
+    assert r2["ok"] is True
+
+    # Poster should have been called with user input and response
+    assert len(poster_calls) == 2
+    ch_ref, user_text = poster_calls[0]
+    assert ch_ref == "C123:ts456"
+    # Default attribution="bot" — no [via terminal] prefix
+    assert user_text == "what is the weather"
+    assert "[via terminal]" not in user_text
+
+    ch_ref2, resp_text = poster_calls[1]
+    assert ch_ref2 == "C123:ts456"
+    assert resp_text  # response from MockExecutor
+
+
+@pytest.mark.asyncio
+async def test_fanout_poster_not_called_for_connected_client(
+    server_with_poster, socket_path, db, poster_calls,
+):
+    """Poster is not called for channels with a connected socket client."""
+    # Two terminals connect — both connected via socket
+    r1_reader, r1_writer = await asyncio.open_unix_connection(str(socket_path))
+    r2_reader, r2_writer = await asyncio.open_unix_connection(str(socket_path))
+    try:
+        # Terminal 1 creates a session
+        msg1 = json.dumps(_msg_dict(channel_ref="cli-t1", content="init"))
+        r1_writer.write(msg1.encode("utf-8") + b"\n")
+        await r1_writer.drain()
+        resp1 = json.loads(await r1_reader.readline())
+        session_id = resp1["session_id"]
+
+        # Terminal 2 registers
+        msg2 = json.dumps(_msg_dict(channel_ref="cli-t2", content="init2"))
+        r2_writer.write(msg2.encode("utf-8") + b"\n")
+        await r2_writer.drain()
+        await r2_reader.readline()
+
+        # Bind terminal 2 to terminal 1's session
+        repo = Repository(db)
+        await repo.add_channel_binding(session_id, "terminal", "cli-t2")
+
+        # Terminal 1 sends — fanout goes to terminal 2 via socket, NOT poster
+        msg3 = json.dumps(_msg_dict(channel_ref="cli-t1", content="msg"))
+        r1_writer.write(msg3.encode("utf-8") + b"\n")
+        await r1_writer.drain()
+        await r1_reader.readline()  # response
+
+        # Wait briefly for any fanout
+        await asyncio.sleep(0.2)
+
+        # Poster should NOT have been called since cli-t2 is connected
+        assert len(poster_calls) == 0
+    finally:
+        r1_writer.close()
+        await r1_writer.wait_closed()
+        r2_writer.close()
+        await r2_writer.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_fanout_poster_receives_both_user_input_and_response(
+    server_with_poster, socket_path, db, poster_calls,
+):
+    """Poster receives user input first (as bot by default), then the response."""
+    r1 = await _send_recv(socket_path, _msg_dict(content="first"))
+    session_id = r1["session_id"]
+
+    repo = Repository(db)
+    await repo.add_channel_binding(session_id, "slack", "C999:ts999")
+
+    await _send_recv(socket_path, _msg_dict(content="tell me a joke"))
+    assert len(poster_calls) == 2
+
+    # First call: user input posted as bot (no prefix by default)
+    assert poster_calls[0][0] == "C999:ts999"
+    assert poster_calls[0][1] == "tell me a joke"
+
+    # Second call: agent response
+    assert poster_calls[1][0] == "C999:ts999"
+
+
+@pytest.mark.asyncio
+async def test_fanout_poster_not_called_without_poster(
+    server, socket_path, db,
+):
+    """Without a fanout_poster, no external posting occurs (no crash)."""
+    r1 = await _send_recv(socket_path, _msg_dict(content="hello"))
+    session_id = r1["session_id"]
+
+    repo = Repository(db)
+    await repo.add_channel_binding(session_id, "slack", "C123:ts456")
+
+    # This should work fine even though Slack channel has no connected client
+    r2 = await _send_recv(socket_path, _msg_dict(content="second"))
+    assert r2["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_fanout_poster_error_does_not_crash_server(
+    dispatcher, socket_path, db,
+):
+    """If the poster raises, the server logs and continues."""
+    async def failing_poster(channel_ref: str, text: str) -> None:
+        raise RuntimeError("Slack API down")
+
+    srv = SocketServer(dispatcher, socket_path, fanout_poster=failing_poster)
+    await srv.start()
+    try:
+        r1 = await _send_recv(socket_path, _msg_dict(content="hello"))
+        session_id = r1["session_id"]
+
+        repo = Repository(db)
+        await repo.add_channel_binding(session_id, "slack", "C123:ts456")
+
+        # Should not crash
+        r2 = await _send_recv(socket_path, _msg_dict(content="second"))
+        assert r2["ok"] is True
+    finally:
+        await srv.stop()
+
+
+# ── Attribution modes ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_fanout_bot_attribution_no_prefix(
+    server_with_poster, socket_path, db, poster_calls,
+):
+    """Default attribution="bot" posts user messages without a prefix."""
+    r1 = await _send_recv(socket_path, _msg_dict(content="init"))
+    session_id = r1["session_id"]
+
+    repo = Repository(db)
+    await repo.add_channel_binding(session_id, "slack", "C100:ts100")
+
+    r2 = await _send_recv(socket_path, _msg_dict(content="hello from terminal"))
+    assert r2["ok"] is True
+
+    # User message posted as-is (bot attribution)
+    assert len(poster_calls) == 2
+    assert poster_calls[0][1] == "hello from terminal"
+    assert "[via" not in poster_calls[0][1]
+
+
+@pytest.mark.asyncio
+async def test_fanout_attributed_mode_adds_prefix(
+    server_with_poster, socket_path, db, poster_calls,
+):
+    """When attribution is set to "attributed", user messages get a [via source] prefix."""
+    r1 = await _send_recv(socket_path, _msg_dict(content="init"))
+    session_id = r1["session_id"]
+
+    # Change attribution to "attributed"
+    repo = Repository(db)
+    await repo.update_session_attribution(session_id, "attributed")
+    await repo.add_channel_binding(session_id, "slack", "C200:ts200")
+
+    r2 = await _send_recv(socket_path, _msg_dict(content="hello from terminal"))
+    assert r2["ok"] is True
+
+    # User message should have the [via terminal] prefix
+    assert len(poster_calls) == 2
+    assert "[via terminal]" in poster_calls[0][1]
+    assert "hello from terminal" in poster_calls[0][1]
+
+
+@pytest.mark.asyncio
+async def test_fanout_attributed_mode_response_no_prefix(
+    server_with_poster, socket_path, db, poster_calls,
+):
+    """Agent responses never get an attribution prefix regardless of mode."""
+    r1 = await _send_recv(socket_path, _msg_dict(content="init"))
+    session_id = r1["session_id"]
+
+    repo = Repository(db)
+    await repo.update_session_attribution(session_id, "attributed")
+    await repo.add_channel_binding(session_id, "slack", "C300:ts300")
+
+    r2 = await _send_recv(socket_path, _msg_dict(content="ping"))
+    assert r2["ok"] is True
+
+    # Second poster call is the response — no prefix
+    assert len(poster_calls) == 2
+    resp_text = poster_calls[1][1]
+    assert "[via" not in resp_text
+    assert "mock response: ping" in resp_text

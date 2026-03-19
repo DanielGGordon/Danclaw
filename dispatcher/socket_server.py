@@ -52,12 +52,16 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from dispatcher.dispatcher import Dispatcher
 from dispatcher.models import StandardMessage
 
 logger = logging.getLogger(__name__)
+
+# Type alias for the fanout poster callback.
+# Signature: async def poster(channel_ref: str, text: str) -> None
+FanoutPoster = Callable[[str, str], "asyncio.coroutines"]
 
 
 class SocketServer:
@@ -69,9 +73,20 @@ class SocketServer:
         The dispatcher instance that will process incoming messages.
     socket_path:
         Filesystem path for the Unix domain socket.
+    fanout_poster:
+        Optional async callback ``(channel_ref, text) -> None`` used to
+        post fanout messages to channels that are not connected via
+        socket (e.g. Slack threads).  When set, user input from bridged
+        sessions is forwarded to these channels as the bot.
     """
 
-    def __init__(self, dispatcher: Dispatcher, socket_path: str | Path) -> None:
+    def __init__(
+        self,
+        dispatcher: Dispatcher,
+        socket_path: str | Path,
+        *,
+        fanout_poster: Optional[FanoutPoster] = None,
+    ) -> None:
         self._dispatcher = dispatcher
         self._socket_path = Path(socket_path)
         self._server: Optional[asyncio.Server] = None
@@ -79,6 +94,10 @@ class SocketServer:
         # Used for pushing fanout messages to terminal clients that are
         # attached to bridged sessions.
         self._connected_clients: dict[str, asyncio.StreamWriter] = {}
+        # Optional async callback for posting to channels that are not
+        # connected via socket (e.g. Slack threads).  Called with
+        # (channel_ref, text).
+        self._fanout_poster: Optional[FanoutPoster] = fanout_poster
 
     @property
     def socket_path(self) -> Path:
@@ -234,6 +253,12 @@ class SocketServer:
 
         For each channel_ref in ``result.fanout_channels``, if there is a
         registered connected client, send it a JSON fanout push message.
+        For channels that are not connected via socket (e.g. Slack threads),
+        use the ``fanout_poster`` callback if one is configured.
+
+        When a user message is available (``result.user_content``), the
+        poster is called twice: first with the attributed user message,
+        then with the agent's response.
         """
         if not result.fanout_channels:
             return
@@ -250,18 +275,54 @@ class SocketServer:
         stale_refs: list[str] = []
         for ref in result.fanout_channels:
             writer = self._connected_clients.get(ref)
-            if writer is None:
-                continue
-            try:
-                writer.write(payload)
-                await writer.drain()
-                logger.debug("Pushed fanout to %s", ref)
-            except (ConnectionResetError, BrokenPipeError, OSError):
-                logger.debug("Failed to push fanout to %s (stale)", ref)
-                stale_refs.append(ref)
+            if writer is not None:
+                try:
+                    writer.write(payload)
+                    await writer.drain()
+                    logger.debug("Pushed fanout to %s", ref)
+                except (ConnectionResetError, BrokenPipeError, OSError):
+                    logger.debug("Failed to push fanout to %s (stale)", ref)
+                    stale_refs.append(ref)
+            elif self._fanout_poster is not None:
+                # Post to external channels (e.g. Slack) via the callback.
+                # Forward both the user input (attributed) and the response.
+                await self._post_to_external(ref, result)
 
         for ref in stale_refs:
             self._connected_clients.pop(ref, None)
+
+    async def _post_to_external(self, channel_ref: str, result) -> None:
+        """Post user input and agent response to an external channel.
+
+        Attribution behaviour depends on ``result.attribution``:
+
+        - ``"bot"`` (default): the user's message is posted as-is, appearing
+          as if the bot said it.  This is the default for bridged sessions.
+        - Any other value: the user's message is prefixed with
+          ``[via <source>]`` so participants can distinguish the speaker.
+
+        The agent's response is always posted as-is (it already appears as
+        the bot).
+        """
+        try:
+            if result.user_content:
+                attribution = getattr(result, "attribution", "bot")
+                if attribution == "bot":
+                    user_text = result.user_content
+                else:
+                    user_label = (
+                        f"[via {result.user_source}]"
+                        if result.user_source
+                        else "[via unknown]"
+                    )
+                    user_text = f"{user_label} {result.user_content}"
+                await self._fanout_poster(channel_ref, user_text)
+            if result.response:
+                await self._fanout_poster(channel_ref, result.response)
+        except Exception:
+            logger.exception(
+                "Failed to post fanout to external channel %s", channel_ref,
+            )
 
     async def _handle_detach(
         self, session_id: str, channel_ref: str,

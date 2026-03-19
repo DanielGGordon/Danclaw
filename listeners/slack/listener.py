@@ -27,10 +27,55 @@ from typing import Optional
 
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
+from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
 
 from dispatcher.models import StandardMessage
 
 logger = logging.getLogger(__name__)
+
+
+class SlackFanoutPoster:
+    """Posts fanout messages to Slack threads on behalf of the bot.
+
+    Used by the socket server's ``fanout_poster`` callback to forward
+    terminal user messages and agent responses to Slack channels that
+    are part of a bridged session.
+
+    Parameters
+    ----------
+    client:
+        An initialised :class:`slack_sdk.WebClient` with a valid bot token.
+    """
+
+    def __init__(self, client: WebClient) -> None:
+        self._client = client
+
+    async def post(self, channel_ref: str, text: str) -> None:
+        """Post *text* to the Slack thread identified by *channel_ref*.
+
+        The *channel_ref* format is ``<channel_id>:<thread_ts>`` as used
+        throughout the session binding system.
+        """
+        parts = channel_ref.split(":", 1)
+        if len(parts) != 2:
+            logger.warning(
+                "SlackFanoutPoster: invalid channel_ref format: %s",
+                channel_ref,
+            )
+            return
+
+        channel_id, thread_ts = parts
+        try:
+            self._client.chat_postMessage(
+                channel=channel_id,
+                text=text,
+                thread_ts=thread_ts,
+            )
+        except SlackApiError:
+            logger.exception(
+                "SlackFanoutPoster: failed to post to %s", channel_ref,
+            )
 
 
 class SlackListener:

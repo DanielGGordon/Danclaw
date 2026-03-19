@@ -60,6 +60,14 @@ class DispatchResult:
         fanout_channels: Channel refs bound to the session, excluding the
             source channel.  Listeners use this list to deliver the
             response to other channels that are following the session.
+        user_content: The original user message text, included so that
+            fanout listeners can forward the user's input to other channels.
+        user_source: The source channel type of the user's message
+            (e.g. ``"terminal"``).
+        attribution: How the user's message should be attributed when
+            fanned out to external channels.  ``"bot"`` (default) means
+            the message appears as if posted by the bot with no prefix.
+            Any other value causes an attribution prefix to be added.
     """
 
     session_id: str
@@ -67,6 +75,9 @@ class DispatchResult:
     backend: str
     agent_name: str
     fanout_channels: tuple[str, ...] = ()
+    user_content: str = ""
+    user_source: str = ""
+    attribution: str = "bot"
 
 
 class Dispatcher:
@@ -304,6 +315,9 @@ class Dispatcher:
                 backend="system",
                 agent_name=agent_name,
                 fanout_channels=fanout,
+                user_content=message.content,
+                user_source=message.source,
+                attribution=session.attribution,
             )
 
         logger.info(
@@ -361,12 +375,19 @@ class Dispatcher:
 
         # 11. Gather fanout channels and return result
         fanout = await self._fanout_channels(session_id, message.channel_ref)
+        # Re-fetch session to get current attribution (may have been set
+        # after session creation, e.g. via set_attribution).
+        current_session = await self._session_manager.get_session(session_id)
+        attribution = current_session.attribution if current_session else "bot"
         return DispatchResult(
             session_id=session_id,
             response=result.content,
             backend=result.backend,
             agent_name=agent_name,
             fanout_channels=fanout,
+            user_content=message.content,
+            user_source=message.source,
+            attribution=attribution,
         )
 
     async def _handle_switch(
@@ -417,6 +438,9 @@ class Dispatcher:
                 backend="system",
                 agent_name=session.agent_name,
                 fanout_channels=fanout,
+                user_content=message.content,
+                user_source=message.source,
+                attribution=session.attribution,
             )
 
         # Update session agent
@@ -444,10 +468,14 @@ class Dispatcher:
         fanout = await self._fanout_channels(
             session_id, message.channel_ref,
         )
+        updated_session = await self._session_manager.get_session(session_id)
         return DispatchResult(
             session_id=session_id,
             response=confirm_msg,
             backend="system",
             agent_name=target_agent.name,
             fanout_channels=fanout,
+            user_content=message.content,
+            user_source=message.source,
+            attribution=updated_session.attribution if updated_session else "bot",
         )
