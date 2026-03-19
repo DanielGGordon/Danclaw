@@ -8,6 +8,11 @@
     }
   ],
   "listeners": {},
+  "tools": {
+    "obsidian": {
+      "vault_path": "/home/dgordon/obsidian/vault"
+    }
+  },
   "permissions": {
     "channels": {
       "terminal": {
