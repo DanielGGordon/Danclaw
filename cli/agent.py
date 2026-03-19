@@ -429,8 +429,8 @@ def attach(
                     "session_id": session_id,
                     "channel_ref": channel_ref,
                 })
-            except ConnectionError:
-                pass  # Server already gone — nothing to detach
+            except (ConnectionError, json.JSONDecodeError):
+                pass  # Server already gone or leftover partial data
     finally:
         sock.close()
 

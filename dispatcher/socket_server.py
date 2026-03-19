@@ -246,7 +246,7 @@ class SocketServer:
         })
         payload = fanout_msg.encode("utf-8") + b"\n"
 
-        stale_refs: list[str] = []
+        stale_refs: list[tuple[str, asyncio.StreamWriter]] = []
         for ref in result.fanout_channels:
             writer = self._connected_clients.get(ref)
             if writer is None:
@@ -257,10 +257,11 @@ class SocketServer:
                 logger.debug("Pushed fanout to %s", ref)
             except (ConnectionResetError, BrokenPipeError, OSError):
                 logger.debug("Failed to push fanout to %s (stale)", ref)
-                stale_refs.append(ref)
+                stale_refs.append((ref, writer))
 
-        for ref in stale_refs:
-            self._connected_clients.pop(ref, None)
+        for ref, stale_writer in stale_refs:
+            if self._connected_clients.get(ref) is stale_writer:
+                self._connected_clients.pop(ref, None)
 
     async def _handle_detach(
         self, session_id: str, channel_ref: str,
