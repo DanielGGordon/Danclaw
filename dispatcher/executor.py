@@ -157,3 +157,102 @@ class ClaudeExecutor:
 
         content = stdout.decode(errors="replace").strip()
         return ExecutorResult(content=content, backend="claude")
+
+
+class CodexExecutor:
+    """Executor that calls ``codex`` as an async subprocess.
+
+    Runs ``codex -q "<message>"`` in quiet mode and captures stdout as
+    the response.  Unlike ``claude``, Codex does not support
+    ``--resume`` or ``--system-prompt`` flags, so those are ignored.
+
+    Parameters
+    ----------
+    codex_bin:
+        Path or name of the ``codex`` CLI binary.  Defaults to
+        ``"codex"``.
+    """
+
+    def __init__(self, codex_bin: str = "codex") -> None:
+        self._codex_bin = codex_bin
+
+    async def execute(
+        self,
+        message: StandardMessage,
+        *,
+        persona: str | None = None,
+        allowed_tools: frozenset[str] | None = None,
+    ) -> ExecutorResult:
+        """Execute *message* via the ``codex`` CLI subprocess.
+
+        Raises
+        ------
+        RuntimeError
+            If the subprocess exits with a non-zero return code.
+        """
+        cmd = [self._codex_bin, "-q", message.content]
+
+        logger.info("Running codex subprocess: %s", cmd)
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+
+        if proc.returncode != 0:
+            stderr_text = stderr.decode(errors="replace").strip()
+            raise RuntimeError(
+                f"codex exited with code {proc.returncode}: {stderr_text}"
+            )
+
+        content = stdout.decode(errors="replace").strip()
+        return ExecutorResult(content=content, backend="codex")
+
+
+class FallbackExecutor:
+    """Executor that tries multiple executors in sequence.
+
+    Accepts an ordered list of executors and calls each in turn.  If an
+    executor raises any exception, it is logged and the next executor is
+    tried.  If all executors fail, the last exception is re-raised.
+
+    Parameters
+    ----------
+    executors:
+        Ordered list of executor instances to try.  Must contain at
+        least one executor.
+    """
+
+    def __init__(self, executors: list) -> None:
+        if not executors:
+            raise ValueError("FallbackExecutor requires at least one executor")
+        self._executors = list(executors)
+
+    async def execute(
+        self,
+        message: StandardMessage,
+        *,
+        persona: str | None = None,
+        allowed_tools: frozenset[str] | None = None,
+    ) -> ExecutorResult:
+        """Try each executor in order, falling back on failure.
+
+        Returns the result from the first executor that succeeds.
+        If all executors fail, raises the exception from the last one.
+        """
+        last_exc: Exception | None = None
+        for executor in self._executors:
+            try:
+                return await executor.execute(
+                    message, persona=persona, allowed_tools=allowed_tools,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Executor %s failed: %s; trying next fallback",
+                    type(executor).__name__,
+                    exc,
+                )
+                last_exc = exc
+        raise last_exc  # type: ignore[misc]

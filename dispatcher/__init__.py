@@ -1,6 +1,12 @@
 from dispatcher.database import init_db
 from dispatcher.dispatcher import Dispatcher, DispatchResult
-from dispatcher.executor import ClaudeExecutor, ExecutorResult, MockExecutor
+from dispatcher.executor import (
+    ClaudeExecutor,
+    CodexExecutor,
+    ExecutorResult,
+    FallbackExecutor,
+    MockExecutor,
+)
 from dispatcher.models import StandardMessage
 from dispatcher.permissions import requires_approval, resolve_permissions
 from dispatcher.repository import Repository
@@ -15,7 +21,9 @@ __all__ = [
     "Repository",
     "SessionManager",
     "ClaudeExecutor",
+    "CodexExecutor",
     "ExecutorResult",
+    "FallbackExecutor",
     "MockExecutor",
     "SocketServer",
     "requires_approval",
