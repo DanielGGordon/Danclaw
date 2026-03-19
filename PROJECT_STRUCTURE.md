@@ -38,6 +38,8 @@ danclaw/
 │   ├── __init__.py           # Python package marker
 │   └── README.md             # Module documentation
 ├── personas/
+│   ├── __init__.py           # Re-exports load_persona, PersonaError
+│   ├── loader.py             # Persona loader: reads markdown files by name
 │   ├── default.md            # Default agent persona (system prompt)
 │   └── README.md             # Module documentation
 ├── tools/
@@ -52,7 +54,7 @@ danclaw/
 - **config/**: Configuration loading and validation. Reads JSON config defining agents (name, persona, backend_preference, allowed_tools), listeners, and permissions.
 - **dispatcher/**: Core message routing, session management, permission checks, AI executor invocation.
 - **listeners/**: Channel adapters (terminal, Slack, Twilio) that translate to/from StandardMessage.
-- **personas/**: Markdown files used as system prompts for agents. Referenced by name in config.
+- **personas/**: Markdown files used as system prompts for agents. Referenced by name in config. Includes a loader module (`load_persona`) that reads persona files by name and returns their content as strings.
 - **tools/**: Standalone scripts invokable by agents, registered per-agent in config.
 - **tests/**: All test files. Mirrors the source module structure.
 - **plans/**: Implementation plans and task tracking.

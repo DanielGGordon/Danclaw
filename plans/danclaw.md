@@ -98,7 +98,7 @@ Agents become real entities loaded from config. Each agent has a name, a persona
 ### Acceptance criteria
 
 - [x] Agent definitions in JSON config: name, persona reference, backend preference list, allowed tools
-- [ ] Personas stored as markdown files in `personas/` directory, loaded by name
+- [x] Personas stored as markdown files in `personas/` directory, loaded by name
 - [ ] Dispatcher resolves which agent to use for a given message based on config
 - [ ] Agent's persona is injected as context when invoking the executor
 - [ ] Persona switching: a user can request a different persona within a session, and subsequent messages use the new persona
