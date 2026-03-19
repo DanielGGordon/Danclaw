@@ -3,7 +3,7 @@
 Starts the full dispatcher process:
 1. Load and validate configuration.
 2. Initialise the SQLite database schema.
-3. Wire up Repository, SessionManager, MockExecutor, Dispatcher, and SocketServer.
+3. Wire up Repository, SessionManager, Executor, Dispatcher, and SocketServer.
 4. Listen on a Unix domain socket for incoming messages.
 5. Wait for SIGTERM/SIGINT, then shut down cleanly.
 """
@@ -22,7 +22,7 @@ import aiosqlite
 from config import load_config, ConfigError
 from dispatcher.database import init_db
 from dispatcher.dispatcher import Dispatcher
-from dispatcher.executor import MockExecutor
+from dispatcher.executor import build_executor
 from dispatcher.repository import Repository
 from dispatcher.session_manager import SessionManager
 from dispatcher.socket_server import SocketServer
@@ -89,7 +89,10 @@ async def _run(
         # Wire up components
         repo = Repository(db)
         session_manager = SessionManager(repo)
-        executor = MockExecutor()
+        agent = config.default_agent
+        executor = build_executor(
+            agent.backend_preference, timeout=agent.timeout,
+        )
         dispatcher = Dispatcher(session_manager, repo, executor, config=config)
         server = SocketServer(dispatcher, socket_path)
 
