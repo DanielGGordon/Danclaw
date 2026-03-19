@@ -245,8 +245,8 @@ class Dispatcher:
         )
 
         # 7. Execute
-        executor = self._resolve_executor(agent)
         try:
+            executor = self._resolve_executor(agent)
             result: ExecutorResult = await executor.execute(
                 message, persona=persona_content,
                 allowed_tools=allowed_tools,
