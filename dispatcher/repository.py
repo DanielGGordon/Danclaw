@@ -125,7 +125,7 @@ class Repository:
                 f"Must be one of {sorted(VALID_STATES)}"
             )
 
-        sid = session_id or uuid.uuid4().hex
+        sid = session_id if session_id is not None else uuid.uuid4().hex
         now = _utcnow()
         await self._db.execute(
             "INSERT INTO sessions (id, agent_name, state, attribution, created_at, updated_at) "
