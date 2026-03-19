@@ -13,7 +13,6 @@ Configuration loading and validation. Reads the JSON config file that defines ag
 - `load_config(path, *, personas_dir=None)` — Reads and validates the JSON config file, returns a `DanClawConfig` instance. Raises `ConfigError` on any validation failure.
 - `DanClawConfig` — Frozen dataclass: `agents: list[AgentConfig]`, `listeners: dict`.
   - `default_agent` — Property returning the first agent in the list. Raises `ConfigError` if no agents are configured.
-  - `get_agent(name)` — Looks up an agent by name. Returns `None` if not found.
 - `AgentConfig` — Frozen dataclass: `name`, `persona`, `backend_preference`, `allowed_tools`.
 - `ConfigError` — Exception raised for invalid or missing config.
 
