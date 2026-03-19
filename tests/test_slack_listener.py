@@ -191,6 +191,31 @@ class TestMessageToStandard:
         msg = listener.message_to_standard(event)
         assert msg is None
 
+    def test_own_bot_user_message_returns_none(self, listener):
+        """Messages from the bot's own user ID are ignored to prevent loops."""
+        listener._bot_user_id = "UBOT123"
+        event = {
+            "channel": "C123ABC",
+            "user": "UBOT123",
+            "text": "I said something",
+            "ts": "1234567890.123456",
+        }
+        msg = listener.message_to_standard(event)
+        assert msg is None
+
+    def test_own_bot_user_check_skipped_when_id_not_resolved(self, listener):
+        """When bot user ID is not resolved, messages are not filtered by user."""
+        listener._bot_user_id = None
+        event = {
+            "channel": "C123ABC",
+            "user": "UBOT123",
+            "text": "some message",
+            "ts": "1234567890.123456",
+        }
+        msg = listener.message_to_standard(event)
+        assert msg is not None
+        assert msg.user_id == "UBOT123"
+
     def test_message_changed_subtype_returns_none(self, listener):
         """Message edits (subtype 'message_changed') are ignored."""
         event = {
@@ -508,6 +533,21 @@ class TestHandleMessage:
             "text": "bot message",
             "ts": "1234567890.123456",
             "bot_id": "B789",
+        }
+        say = MagicMock()
+
+        with patch.object(listener, "_send_to_dispatcher") as mock_send:
+            listener._handle_message(event, say)
+            mock_send.assert_not_called()
+
+    def test_handle_message_ignores_own_bot_user_messages(self, listener):
+        """_handle_message skips messages from the bot's own user ID."""
+        listener._bot_user_id = "UBOT123"
+        event = {
+            "channel": "C123",
+            "user": "UBOT123",
+            "text": "my own reply",
+            "ts": "1234567890.123456",
         }
         say = MagicMock()
 

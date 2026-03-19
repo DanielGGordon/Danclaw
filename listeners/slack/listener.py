@@ -125,6 +125,11 @@ class SlackListener:
             logger.debug("Ignoring bot message: %s", event.get("bot_id"))
             return None
 
+        # Ignore messages from this bot's own user ID to prevent loops
+        if self._bot_user_id and event.get("user") == self._bot_user_id:
+            logger.debug("Ignoring own message from bot user: %s", self._bot_user_id)
+            return None
+
         # Ignore message subtypes (edits, deletes, joins, etc.)
         subtype = event.get("subtype")
         if subtype is not None:
