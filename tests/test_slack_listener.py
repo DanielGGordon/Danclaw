@@ -505,6 +505,7 @@ class TestHandleMessage:
         """_handle_message skips bot messages without sending."""
         event = {
             "channel": "C123",
+            "channel_type": "im",
             "user": "U456",
             "text": "bot message",
             "ts": "1234567890.123456",
@@ -520,6 +521,7 @@ class TestHandleMessage:
         """_handle_message catches and logs dispatcher send errors."""
         event = {
             "channel": "C123",
+            "channel_type": "im",
             "user": "U456",
             "text": "hello",
             "ts": "1234567890.123456",
