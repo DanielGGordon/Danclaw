@@ -7,7 +7,6 @@ import json
 import socket
 import tempfile
 import threading
-from pathlib import Path
 from unittest.mock import patch
 
 import aiosqlite
@@ -24,35 +23,6 @@ from dispatcher.socket_server import SocketServer
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
-
-
-def _run_server_in_thread(dispatcher, socket_path: Path):
-    """Start a SocketServer in a background thread and return stop handles.
-
-    Returns (thread, stop_fn) where stop_fn is an async-safe callable
-    that stops the server and joins the thread.
-    """
-    loop = asyncio.new_event_loop()
-    server = SocketServer(dispatcher, socket_path)
-    started = threading.Event()
-
-    def _thread_target():
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(server.start())
-        started.set()
-        loop.run_forever()
-        loop.run_until_complete(server.stop())
-        loop.close()
-
-    t = threading.Thread(target=_thread_target, daemon=True)
-    t.start()
-    started.wait(timeout=5)
-
-    def stop():
-        loop.call_soon_threadsafe(loop.stop)
-        t.join(timeout=5)
-
-    return t, stop
 
 
 @pytest.fixture
