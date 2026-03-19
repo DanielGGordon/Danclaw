@@ -66,8 +66,10 @@ danclaw/
 │   └── e2e_test.py           # Standalone end-to-end smoke test (requires claude CLI)
 └── tests/                    # Test suite
     ├── conftest.py           # Shared test helpers (make_config)
-    ├── test_admin_agent.py   # Tests for admin agent config, permissions, and dispatch
+    ├── test_admin_agent.py   # Tests for admin agent config, permissions, dispatch, and git ops integration
     ├── test_e2e_claude.py    # End-to-end integration test via ClaudeExecutor (manual marker)
+    ├── test_git_ops.py       # Tests for git add/commit/push tool functions and CLI
+    ├── test_git_ops_telemetry.py # Tests for telemetry-instrumented git operation wrappers
     └── test_telemetry_query.py # Tests for telemetry query/filter/pagination methods
 ```
 

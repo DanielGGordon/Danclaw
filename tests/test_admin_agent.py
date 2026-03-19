@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
+import aiosqlite
 import pytest
+import pytest_asyncio
 
 from config import (
     AgentConfig,
@@ -15,7 +18,14 @@ from config import (
     UserPermissions,
     load_config,
 )
+from dispatcher.database import _SCHEMA_SQL
+from dispatcher.dispatcher import Dispatcher, DispatchResult
+from dispatcher.executor import ExecutorResult, MockExecutor
+from dispatcher.models import StandardMessage
 from dispatcher.permissions import requires_approval, resolve_permissions
+from dispatcher.repository import Repository
+from dispatcher.session_manager import SessionManager
+from tests.conftest import make_personas_dir
 
 
 # ── Fixtures ────────────────────────────────────────────────────────────
@@ -330,3 +340,231 @@ class TestRealConfigAdminAgent:
         config_path = project_root / "config" / "danclaw.json"
         cfg = load_config(config_path, personas_dir=project_root / "personas")
         assert requires_approval(cfg.permissions, "admin", "dan") is False
+
+
+# ── Integration: admin dispatches git ops ─────────────────────────────
+
+
+def _admin_dispatch_config() -> DanClawConfig:
+    """Config with admin agent that has git_ops and a restricted channel."""
+    return DanClawConfig(
+        agents=[
+            AgentConfig(
+                name="default",
+                persona="default",
+                backend_preference=["claude"],
+            ),
+            AgentConfig(
+                name="admin",
+                persona="admin",
+                backend_preference=["claude"],
+                allowed_tools=["git_ops", "deploy"],
+            ),
+        ],
+        permissions=PermissionsConfig(
+            channels={
+                "admin": ChannelPermissions(
+                    allowed_tools=["git_ops", "deploy"],
+                    override=False,
+                    approval_required=False,
+                ),
+                "general": ChannelPermissions(
+                    allowed_tools=["obsidian"],
+                    override=True,
+                    approval_required=True,
+                ),
+            },
+        ),
+    )
+
+
+class TestAdminAgentDispatchGitOps:
+    """Admin agent can dispatch messages with git_ops tool access."""
+
+    @pytest_asyncio.fixture
+    async def db(self):
+        async with aiosqlite.connect(":memory:") as conn:
+            await conn.executescript(_SCHEMA_SQL)
+            await conn.execute("PRAGMA foreign_keys = ON")
+            await conn.commit()
+            yield conn
+
+    @pytest_asyncio.fixture
+    async def repo(self, db):
+        return Repository(db)
+
+    @pytest_asyncio.fixture
+    async def mgr(self, repo):
+        return SessionManager(repo)
+
+    @pytest.fixture
+    def personas_dir(self, tmp_path):
+        return make_personas_dir(tmp_path, {
+            "default": "Default test persona.",
+            "admin": "Admin persona with full tool access.",
+        })
+
+    @pytest_asyncio.fixture
+    async def admin_dispatcher(self, mgr, repo, personas_dir):
+        return Dispatcher(
+            mgr, repo, MockExecutor(),
+            config=_admin_dispatch_config(),
+            personas_dir=personas_dir,
+        )
+
+    @pytest.mark.asyncio
+    async def test_admin_channel_no_approval_gate(self, admin_dispatcher) -> None:
+        """Admin channel dispatches directly without approval gate."""
+        msg = StandardMessage(
+            source="terminal", channel_ref="admin",
+            user_id="dan", content="run git add",
+        )
+        result = await admin_dispatcher.dispatch(msg)
+        assert result.backend != "system"  # not blocked by approval
+        assert "approval" not in result.response.lower()
+
+    @pytest.mark.asyncio
+    async def test_admin_channel_resolves_git_ops_tool(self, admin_dispatcher) -> None:
+        """Admin channel permission includes git_ops tool."""
+        config = _admin_dispatch_config()
+        tools = resolve_permissions(config.permissions, "admin", "dan")
+        assert "git_ops" in tools
+
+    @pytest.mark.asyncio
+    async def test_general_channel_requires_approval(self, admin_dispatcher) -> None:
+        """Non-admin channel hits the approval gate.
+
+        The dispatcher resolves permissions using ``message.source``,
+        so source must match a configured channel name.
+        """
+        msg = StandardMessage(
+            source="general", channel_ref="general-thread",
+            user_id="someone", content="run git push",
+        )
+        result = await admin_dispatcher.dispatch(msg)
+        assert "approval" in result.response.lower()
+
+    @pytest.mark.asyncio
+    async def test_general_channel_cannot_access_git_ops(self) -> None:
+        """Non-admin channel does not resolve git_ops tool."""
+        config = _admin_dispatch_config()
+        tools = resolve_permissions(config.permissions, "general", "someone")
+        assert "git_ops" not in tools
+
+    @pytest.mark.asyncio
+    async def test_admin_dispatch_uses_admin_agent(self, admin_dispatcher) -> None:
+        """After switching to admin agent, dispatch uses it."""
+        # Create session via first message
+        msg1 = StandardMessage(
+            source="terminal", channel_ref="admin",
+            user_id="dan", content="/switch admin",
+        )
+        r1 = await admin_dispatcher.dispatch(msg1)
+        assert "admin" in r1.response.lower()
+
+        # Subsequent message dispatches through admin agent
+        msg2 = StandardMessage(
+            source="terminal", channel_ref="admin",
+            user_id="dan", content="git add .",
+            session_id=r1.session_id,
+        )
+        r2 = await admin_dispatcher.dispatch(msg2)
+        assert r2.agent_name == "admin"
+
+    @pytest.mark.asyncio
+    async def test_admin_dispatch_returns_response(self, admin_dispatcher) -> None:
+        """Admin agent returns a response (mock executor echo)."""
+        msg = StandardMessage(
+            source="terminal", channel_ref="admin",
+            user_id="dan", content="git commit -m 'test'",
+        )
+        result = await admin_dispatcher.dispatch(msg)
+        assert result.response  # non-empty response
+        assert result.session_id  # session was created
+
+
+class TestAdminGitOpsToolAccess:
+    """Verify git_ops tool functions work end-to-end with real git repos."""
+
+    def test_admin_agent_add_commit_push(self, tmp_path: Path) -> None:
+        """Admin agent's tools can perform the full git workflow."""
+        from tools.git_ops import git_add, git_commit, git_push
+
+        # Set up repo with bare remote
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "config", "user.email", "admin@danclaw.dev"],
+            cwd=repo, capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Admin Agent"],
+            cwd=repo, capture_output=True, check=True,
+        )
+        (repo / "init.txt").write_text("init")
+        subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "initial"],
+            cwd=repo, capture_output=True, check=True,
+        )
+
+        remote = tmp_path / "remote.git"
+        subprocess.run(
+            ["git", "init", "--bare", str(remote)],
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "remote", "add", "origin", str(remote)],
+            cwd=repo, capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "push", "-u", "origin", "master"],
+            cwd=repo, capture_output=True, check=True,
+        )
+
+        # Simulate admin agent performing git operations
+        (repo / "update.py").write_text("# admin change")
+        git_add(["update.py"], cwd=repo)
+        git_commit("admin: automated update", cwd=repo)
+        git_push(cwd=repo)
+
+        # Verify remote received the commit
+        log = subprocess.run(
+            ["git", "log", "--oneline"],
+            cwd=remote, capture_output=True, text=True,
+        )
+        assert "admin: automated update" in log.stdout
+
+    def test_admin_tools_with_telemetry(self, tmp_path: Path) -> None:
+        """Admin git ops emit telemetry events."""
+        from dispatcher.telemetry import TelemetryCollector
+        from tools.instrumented import git_add, git_commit
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "config", "user.email", "admin@danclaw.dev"],
+            cwd=repo, capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Admin"],
+            cwd=repo, capture_output=True, check=True,
+        )
+        (repo / "init.txt").write_text("init")
+        subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "initial"],
+            cwd=repo, capture_output=True, check=True,
+        )
+
+        collector = TelemetryCollector()
+        (repo / "telemetry_test.py").write_text("# test")
+        git_add(["telemetry_test.py"], cwd=repo, telemetry=collector)
+        git_commit("admin: telemetry test", cwd=repo, telemetry=collector)
+
+        assert len(collector.events) == 2
+        assert collector.events[0].payload["tool"] == "git_add"
+        assert collector.events[1].payload["tool"] == "git_commit"
+        assert all(e.payload["success"] for e in collector.events)

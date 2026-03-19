@@ -48,13 +48,17 @@ Also runnable as a CLI: `python -m tools.deploy --cwd /path [--no-rebuild]`
 
 ### Instrumented Wrappers (`instrumented.py`)
 
-`tools.instrumented` provides telemetry-emitting wrappers around the Obsidian tool functions (`read_file`, `write_file`, `search_files`). Each wrapper accepts a `telemetry` keyword argument (a `TelemetryCollector` instance) and records a `"tool_execution"` event with payload fields:
+`tools.instrumented` provides telemetry-emitting wrappers around tool functions. Each wrapper accepts a `telemetry` keyword argument (a `TelemetryCollector` instance) and records a `"tool_execution"` event with payload fields:
 
-- `tool` — tool name (e.g. `"obsidian_read"`)
+- `tool` — tool name (e.g. `"obsidian_read"`, `"git_add"`, `"git_commit"`, `"git_push"`)
 - `args` — dict of arguments passed to the tool function
 - `success` — boolean indicating success or failure
 - `duration` — wall-clock seconds the call took
 - `error` — error message (only present on failure)
+
+Wrapped tools:
+- **Obsidian**: `read_file`, `write_file`, `search_files`
+- **Git operations**: `git_add`, `git_commit`, `git_push`
 
 Events are emitted on both success and failure (exceptions are re-raised after recording).
 
