@@ -91,11 +91,8 @@ def validate_config(
 
         # Check tool scripts
         for tool_name in agent.allowed_tools:
-            # Look for any file matching the tool name (with or without extension)
-            matches = list(tools_dir.glob(f"{tool_name}*"))
-            # Filter to actual tool scripts (not directories, not __pycache__, etc.)
             tool_files = [
-                m for m in matches
+                m for m in tools_dir.iterdir()
                 if m.is_file() and m.stem == tool_name
             ]
             if not tool_files:
