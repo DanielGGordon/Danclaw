@@ -1047,3 +1047,79 @@ async def test_dispatch_result_fanout_on_switch_command(dispatcher, mgr):
     )
     r2 = await dispatcher.dispatch(switch_msg)
     assert "C123-ts456" in r2.fanout_channels
+
+
+# ── DispatchResult user_content / user_source ────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_dispatch_result_includes_user_content(dispatcher):
+    """DispatchResult includes the original user message content."""
+    result = await dispatcher.dispatch(_msg(content="what is the weather"))
+    assert result.user_content == "what is the weather"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_result_includes_user_source(dispatcher):
+    """DispatchResult includes the source channel type."""
+    result = await dispatcher.dispatch(_msg(source="terminal"))
+    assert result.user_source == "terminal"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_result_user_content_from_slack(dispatcher):
+    """DispatchResult user_source reflects the Slack origin."""
+    result = await dispatcher.dispatch(
+        _msg(source="slack", channel_ref="C1:ts1", content="hi from slack"),
+    )
+    assert result.user_content == "hi from slack"
+    assert result.user_source == "slack"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_result_user_content_on_switch(dispatcher, mgr):
+    """Switch command results also carry user_content and user_source."""
+    r1 = await dispatcher.dispatch(_msg(channel_ref="tty1"))
+    switch_msg = _msg(
+        channel_ref="tty1",
+        content="/switch test-agent",
+        session_id=r1.session_id,
+    )
+    r2 = await dispatcher.dispatch(switch_msg)
+    assert r2.user_content == "/switch test-agent"
+    assert r2.user_source == "terminal"
+
+
+# ── Attribution in DispatchResult ─────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_dispatch_result_default_attribution(dispatcher):
+    """DispatchResult carries attribution='bot' by default."""
+    result = await dispatcher.dispatch(_msg())
+    assert result.attribution == "bot"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_result_custom_attribution(dispatcher, mgr):
+    """DispatchResult reflects a session's custom attribution setting."""
+    r1 = await dispatcher.dispatch(_msg())
+    await mgr.set_attribution(r1.session_id, "attributed")
+
+    r2 = await dispatcher.dispatch(_msg())
+    assert r2.attribution == "attributed"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_result_attribution_on_switch(dispatcher, mgr):
+    """Switch command results carry the session's attribution."""
+    r1 = await dispatcher.dispatch(_msg(channel_ref="tty1"))
+    await mgr.set_attribution(r1.session_id, "attributed")
+
+    switch_msg = _msg(
+        channel_ref="tty1",
+        content="/switch test-agent",
+        session_id=r1.session_id,
+    )
+    r2 = await dispatcher.dispatch(switch_msg)
+    assert r2.attribution == "attributed"

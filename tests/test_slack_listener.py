@@ -963,3 +963,75 @@ class TestMainEntryPoint:
             MockListener.assert_called_once_with(
                 socket_path="/tmp/danclaw-dispatcher.sock"
             )
+
+
+# ── SlackFanoutPoster ─────────────────────────────────────────────────
+
+
+class TestSlackFanoutPoster:
+    """Tests for SlackFanoutPoster — posts fanout messages to Slack threads."""
+
+    def _make_poster(self, mock_client=None):
+        from listeners.slack.listener import SlackFanoutPoster
+
+        client = mock_client or MagicMock()
+        return SlackFanoutPoster(client), client
+
+    @pytest.mark.asyncio
+    async def test_post_calls_chat_post_message(self):
+        """post() calls chat_postMessage with correct channel and thread_ts."""
+        poster, client = self._make_poster()
+        await poster.post("C123:1234567890.123456", "hello from terminal")
+
+        client.chat_postMessage.assert_called_once_with(
+            channel="C123",
+            text="hello from terminal",
+            thread_ts="1234567890.123456",
+        )
+
+    @pytest.mark.asyncio
+    async def test_post_splits_channel_ref_correctly(self):
+        """Channel ref is split on the first colon only."""
+        poster, client = self._make_poster()
+        await poster.post("C999:ts.with.dots", "msg")
+
+        client.chat_postMessage.assert_called_once_with(
+            channel="C999",
+            text="msg",
+            thread_ts="ts.with.dots",
+        )
+
+    @pytest.mark.asyncio
+    async def test_post_invalid_channel_ref_no_crash(self):
+        """Invalid channel_ref (no colon) is logged and skipped."""
+        poster, client = self._make_poster()
+        await poster.post("invalid-ref", "msg")
+
+        client.chat_postMessage.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_post_handles_slack_api_error(self):
+        """SlackApiError is caught and logged, not raised."""
+        from slack_sdk.errors import SlackApiError
+
+        client = MagicMock()
+        client.chat_postMessage.side_effect = SlackApiError(
+            message="channel_not_found",
+            response=MagicMock(status_code=404, data={"error": "channel_not_found"}),
+        )
+        poster, _ = self._make_poster(client)
+
+        # Should not raise
+        await poster.post("C123:ts456", "msg")
+
+    @pytest.mark.asyncio
+    async def test_post_attributed_terminal_message(self):
+        """Posting an attributed terminal message includes the [via terminal] prefix."""
+        poster, client = self._make_poster()
+        await poster.post("C123:ts456", "[via terminal] what is the weather")
+
+        client.chat_postMessage.assert_called_once_with(
+            channel="C123",
+            text="[via terminal] what is the weather",
+            thread_ts="ts456",
+        )

@@ -23,6 +23,7 @@ python -m listeners.slack --log-level DEBUG
 - `SlackListener.start()` — start listening (blocking)
 - `SlackListener.stop()` — stop the listener
 - `SlackListener.message_to_standard(event)` — convert a Slack event dict to StandardMessage
+- `SlackFanoutPoster(client)` — posts fanout messages to Slack threads on behalf of the bot. Used as the `fanout_poster` callback for the SocketServer to forward terminal user messages and agent responses to Slack channels in bridged sessions. By default (session attribution=`"bot"`), terminal messages appear as the bot with no attribution prefix. When attribution is set to a non-bot value, messages are prefixed with `[via <source>]`. The `post(channel_ref, text)` method parses the `channel_ref` (format `<channel_id>:<thread_ts>`) and calls `chat_postMessage`.
 
 ## Channel Reference Mapping
 
