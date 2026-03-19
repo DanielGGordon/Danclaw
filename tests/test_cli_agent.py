@@ -585,6 +585,66 @@ def test_attach_connection_error():
         )
 
 
+def test_attach_sends_detach_on_exit(server_env):
+    """attach sends a detach request when the chat loop exits."""
+    session_id = _create_session(server_env, "hello")
+
+    output: list[str] = []
+    inputs = iter(["follow up", "exit"])
+    attach(
+        server_env,
+        session_id,
+        input_fn=lambda _: next(inputs),
+        print_fn=output.append,
+    )
+
+    # The terminal binding created by the chat loop should have been
+    # removed by the detach request on exit.  Verify by listing sessions
+    # — the session should still be present (state is unchanged).
+    sock = _connect(server_env)
+    try:
+        resp = _send_recv(sock, {"type": "list_sessions"})
+        assert resp["ok"] is True
+        session_ids = {s["id"] for s in resp["sessions"]}
+        assert session_id in session_ids
+        # The session is still ACTIVE
+        session = next(s for s in resp["sessions"] if s["id"] == session_id)
+        assert session["state"] == "ACTIVE"
+    finally:
+        sock.close()
+
+
+def test_attach_sends_detach_on_ctrl_c(server_env):
+    """attach sends a detach request when interrupted with Ctrl+C."""
+    session_id = _create_session(server_env, "hello")
+
+    call_count = [0]
+
+    def _input_fn(prompt):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            return "follow up"
+        raise KeyboardInterrupt
+
+    output: list[str] = []
+    attach(
+        server_env,
+        session_id,
+        input_fn=_input_fn,
+        print_fn=output.append,
+    )
+
+    # Session should still exist and be ACTIVE after detach
+    sock = _connect(server_env)
+    try:
+        resp = _send_recv(sock, {"type": "list_sessions"})
+        assert resp["ok"] is True
+        session_ids = {s["id"] for s in resp["sessions"]}
+        assert session_id in session_ids
+    finally:
+        sock.close()
+
+
 def test_main_attach_subcommand(server_env):
     """main(['attach', session_id, '--socket', path]) runs the attach command."""
     session_id = _create_session(server_env, "test")

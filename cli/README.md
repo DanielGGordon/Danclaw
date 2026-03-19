@@ -41,6 +41,7 @@ python -m cli.agent attach <session-id> [--socket /path/to/socket]
 - Connects to the dispatcher's Unix domain socket and sends a `get_history` request.
 - Displays the full message history for the session (user and agent messages).
 - Enters the interactive chat loop bound to that session for continuing the conversation.
+- On exit (via `exit`, Ctrl+C, or Ctrl+D), sends a detach request to remove the terminal's channel binding. The session and other bindings (e.g. Slack) remain intact.
 - Shows an error if the session ID does not exist.
 
 ## Environment Variables
