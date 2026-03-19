@@ -57,7 +57,7 @@ def _connect(socket_path: str) -> socket.socket:
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
         sock.connect(socket_path)
-    except (FileNotFoundError, ConnectionRefusedError) as exc:
+    except OSError as exc:
         sock.close()
         raise ConnectionError(
             f"Cannot connect to dispatcher at {socket_path}: {exc}"
