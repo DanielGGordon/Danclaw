@@ -30,7 +30,7 @@ Slack thread semantics are mapped to `channel_ref` as `<channel_id>:<thread_ts>`
 
 ## Threaded Replies
 
-Bot responses are always posted as threaded replies to keep channels clean. When the dispatcher returns a response with a `content` field, the listener calls `say(text=content, thread_ts=thread_ts)`. For top-level messages, this creates a new thread anchored at the original message. For messages already in a thread, the reply is posted in the same thread.
+Bot responses are always posted as threaded replies to keep channels clean. When the dispatcher returns a response (via the `response` or `content` field), the listener calls `say(text=content, thread_ts=thread_ts)`. For top-level messages, this creates a new thread anchored at the original message. For messages already in a thread, the reply is posted in the same thread.
 
 ## Relationship to Other Modules
 

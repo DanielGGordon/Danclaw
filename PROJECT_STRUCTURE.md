@@ -37,7 +37,7 @@ danclaw/
 │   ├── permissions.py        # Permission resolver: computes effective tool sets for channel + user pairs
 │   ├── repository.py         # Async repository abstraction for all DB access (CRUD on sessions, messages, channel_bindings)
 │   ├── session_manager.py    # High-level session lifecycle manager (get-or-create, state transitions, active listing)
-│   ├── socket_server.py      # Asyncio Unix domain socket server accepting newline-delimited JSON (StandardMessage)
+│   ├── socket_server.py      # Asyncio Unix domain socket server with client registry and fanout push
 │   ├── telemetry.py          # In-memory telemetry event recording (TelemetryEvent, TelemetryCollector)
 │   └── README.md             # Module documentation
 ├── listeners/

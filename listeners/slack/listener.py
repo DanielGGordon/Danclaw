@@ -217,13 +217,14 @@ class SlackListener:
     ) -> None:
         """Post the dispatcher *response* as a threaded reply.
 
-        Does nothing when *response* is ``None`` or contains no ``content``
-        field.
+        Accepts both the ``response`` key (from the socket server's
+        dispatch response) and the ``content`` key (legacy/test compat).
+        Does nothing when *response* is ``None`` or contains no text.
         """
         if not response:
             return
 
-        content = response.get("content")
+        content = response.get("response") or response.get("content")
         if not content:
             return
 

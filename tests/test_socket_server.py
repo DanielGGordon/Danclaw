@@ -639,3 +639,224 @@ async def test_response_fanout_channels_with_multiple_bindings(
     assert r2["session_id"] == session_id
     assert "C123-ts456" in r2["fanout_channels"]
     assert "tty1" not in r2["fanout_channels"]
+
+
+# ── Fanout push to connected clients ──────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_fanout_push_to_connected_terminal(server, socket_path, db):
+    """When a Slack message dispatches, the response is pushed to a connected terminal."""
+    # 1. Terminal client connects and sends a message to create a session
+    term_reader, term_writer = await asyncio.open_unix_connection(str(socket_path))
+    try:
+        msg = json.dumps(_msg_dict(channel_ref="cli-term1", content="hello"))
+        term_writer.write(msg.encode("utf-8") + b"\n")
+        await term_writer.drain()
+        r1_line = await term_reader.readline()
+        r1 = json.loads(r1_line)
+        assert r1["ok"] is True
+        session_id = r1["session_id"]
+
+        # 2. Bind a Slack channel to the same session
+        repo = Repository(db)
+        await repo.add_channel_binding(session_id, "slack", "C123:ts456")
+
+        # 3. Slack client sends a message on the bridged session
+        slack_msg = _msg_dict(
+            source="slack",
+            channel_ref="C123:ts456",
+            content="from slack",
+            session_id=session_id,
+        )
+        slack_resp = await _send_recv(socket_path, slack_msg)
+        assert slack_resp["ok"] is True
+
+        # 4. The terminal client should receive a fanout push
+        fanout_line = await asyncio.wait_for(
+            term_reader.readline(), timeout=2,
+        )
+        fanout = json.loads(fanout_line)
+        assert fanout["type"] == "fanout"
+        assert fanout["session_id"] == session_id
+        assert "from slack" in fanout["response"]
+        assert fanout["source"] == "slack"
+    finally:
+        term_writer.close()
+        await term_writer.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_fanout_push_not_sent_to_source_client(server, socket_path, db):
+    """The source client does not receive a fanout push for its own message."""
+    # Terminal sends a message, creating a session
+    term_reader, term_writer = await asyncio.open_unix_connection(str(socket_path))
+    try:
+        msg = json.dumps(_msg_dict(channel_ref="cli-term1", content="hello"))
+        term_writer.write(msg.encode("utf-8") + b"\n")
+        await term_writer.drain()
+        r1_line = await term_reader.readline()
+        r1 = json.loads(r1_line)
+        assert r1["ok"] is True
+
+        # Send another message — should get only the response, no fanout
+        msg2 = json.dumps(_msg_dict(channel_ref="cli-term1", content="again"))
+        term_writer.write(msg2.encode("utf-8") + b"\n")
+        await term_writer.drain()
+        r2_line = await term_reader.readline()
+        r2 = json.loads(r2_line)
+        assert r2["ok"] is True
+
+        # No extra data should be available (no fanout)
+        try:
+            extra = await asyncio.wait_for(term_reader.readline(), timeout=0.3)
+            # If we get anything, it should not be a fanout to ourselves
+            if extra:
+                parsed = json.loads(extra)
+                assert parsed.get("type") != "fanout"
+        except asyncio.TimeoutError:
+            pass  # Expected — no fanout push
+    finally:
+        term_writer.close()
+        await term_writer.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_fanout_push_multiple_terminals(server, socket_path, db):
+    """Fanout pushes go to all connected terminals bound to the session."""
+    repo = Repository(db)
+
+    # Two terminal clients connect and create sessions
+    readers_writers = []
+    for ref in ("cli-t1", "cli-t2"):
+        r, w = await asyncio.open_unix_connection(str(socket_path))
+        readers_writers.append((r, w, ref))
+        msg = json.dumps(_msg_dict(channel_ref=ref, content="init"))
+        w.write(msg.encode("utf-8") + b"\n")
+        await w.drain()
+        resp_line = await r.readline()
+        resp = json.loads(resp_line)
+        assert resp["ok"] is True
+
+    try:
+        # Both sessions are different. We need them on the same session.
+        # Get terminal 1's session_id and bind terminal 2 to it
+        r1, w1, _ = readers_writers[0]
+        r2, w2, _ = readers_writers[1]
+
+        # Get session_id from terminal 1
+        msg = json.dumps(_msg_dict(channel_ref="cli-t1", content="msg1"))
+        w1.write(msg.encode("utf-8") + b"\n")
+        await w1.drain()
+        resp1 = json.loads(await r1.readline())
+        session_id = resp1["session_id"]
+
+        # Bind terminal 2 to that session
+        await repo.add_channel_binding(session_id, "terminal", "cli-t2")
+
+        # Also bind a Slack channel
+        await repo.add_channel_binding(session_id, "slack", "C999:ts999")
+
+        # Slack sends a message on the session
+        slack_msg = _msg_dict(
+            source="slack",
+            channel_ref="C999:ts999",
+            content="slack msg",
+            session_id=session_id,
+        )
+        await _send_recv(socket_path, slack_msg)
+
+        # Both terminals should receive the fanout
+        for r, w, ref in readers_writers:
+            fanout_line = await asyncio.wait_for(r.readline(), timeout=2)
+            fanout = json.loads(fanout_line)
+            assert fanout["type"] == "fanout"
+            assert "slack msg" in fanout["response"]
+    finally:
+        for r, w, ref in readers_writers:
+            w.close()
+            await w.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_fanout_push_after_disconnect_no_error(server, socket_path, db):
+    """Pushing to a disconnected client does not crash the server."""
+    repo = Repository(db)
+
+    # Terminal connects and creates a session
+    r, w = await asyncio.open_unix_connection(str(socket_path))
+    msg = json.dumps(_msg_dict(channel_ref="cli-gone", content="hello"))
+    w.write(msg.encode("utf-8") + b"\n")
+    await w.drain()
+    resp = json.loads(await r.readline())
+    session_id = resp["session_id"]
+
+    # Bind a Slack channel
+    await repo.add_channel_binding(session_id, "slack", "C000:ts000")
+
+    # Disconnect the terminal
+    w.close()
+    await w.wait_closed()
+    await asyncio.sleep(0.1)  # Let server process disconnect
+
+    # Slack sends a message — should not crash despite stale terminal ref
+    slack_msg = _msg_dict(
+        source="slack",
+        channel_ref="C000:ts000",
+        content="after disconnect",
+        session_id=session_id,
+    )
+    slack_resp = await _send_recv(socket_path, slack_msg)
+    assert slack_resp["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_connected_clients_property(server, socket_path):
+    """The server tracks connected clients in _connected_clients."""
+    assert server._connected_clients == {}
+
+    # Connect a client and send a message to register it
+    r, w = await asyncio.open_unix_connection(str(socket_path))
+    try:
+        msg = json.dumps(_msg_dict(channel_ref="cli-track1", content="hi"))
+        w.write(msg.encode("utf-8") + b"\n")
+        await w.drain()
+        await r.readline()
+
+        assert "cli-track1" in server._connected_clients
+    finally:
+        w.close()
+        await w.wait_closed()
+
+    # After disconnect, the client should be removed
+    await asyncio.sleep(0.1)
+    assert "cli-track1" not in server._connected_clients
+
+
+@pytest.mark.asyncio
+async def test_detach_unregisters_client(server, socket_path, db):
+    """Sending a detach request unregisters the channel_ref from connected clients."""
+    r, w = await asyncio.open_unix_connection(str(socket_path))
+    try:
+        # Send a message to register
+        msg = json.dumps(_msg_dict(channel_ref="cli-detach1", content="hi"))
+        w.write(msg.encode("utf-8") + b"\n")
+        await w.drain()
+        resp = json.loads(await r.readline())
+        session_id = resp["session_id"]
+        assert "cli-detach1" in server._connected_clients
+
+        # Send detach
+        detach = json.dumps({
+            "type": "detach",
+            "session_id": session_id,
+            "channel_ref": "cli-detach1",
+        })
+        w.write(detach.encode("utf-8") + b"\n")
+        await w.drain()
+        await r.readline()
+
+        assert "cli-detach1" not in server._connected_clients
+    finally:
+        w.close()
+        await w.wait_closed()
