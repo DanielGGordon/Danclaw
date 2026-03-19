@@ -16,7 +16,6 @@ venv/
 .ruff_cache/
 htmlcov/
 .coverage
-*.pyo
 
 # SQLite
 *.db
