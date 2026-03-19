@@ -64,6 +64,19 @@ class ObsidianToolConfig:
 
 
 @dataclass(frozen=True)
+class TelemetryConfig:
+    """Telemetry / logging configuration.
+
+    Attributes:
+        slack_log_channel: Slack channel ID where telemetry summaries are
+            posted (e.g. ``"C0123456789"``).  When ``None``, the
+            :class:`SlackLogSink` is not constructed.
+    """
+
+    slack_log_channel: str | None = None
+
+
+@dataclass(frozen=True)
 class ToolsConfig:
     """Container for tool-specific settings.
 
@@ -108,6 +121,7 @@ class DanClawConfig:
     listeners: dict = field(default_factory=dict)
     permissions: PermissionsConfig = field(default_factory=PermissionsConfig)
     tools: ToolsConfig = field(default_factory=ToolsConfig)
+    telemetry: TelemetryConfig = field(default_factory=TelemetryConfig)
 
     @property
     def default_agent(self) -> AgentConfig:
@@ -192,6 +206,31 @@ def validate_config(
     if errors:
         detail = "; ".join(errors)
         raise ConfigError(f"Config validation failed: {detail}")
+
+
+def _parse_telemetry(raw: object) -> TelemetryConfig:
+    """Parse and validate the ``telemetry`` section of the config.
+
+    Args:
+        raw: The raw value from the JSON config (expected to be a dict).
+
+    Returns:
+        A validated :class:`TelemetryConfig`.
+
+    Raises:
+        ConfigError: On any structural or type error.
+    """
+    if not isinstance(raw, dict):
+        raise ConfigError("'telemetry' must be a JSON object")
+
+    slack_log_channel = raw.get("slack_log_channel")
+    if slack_log_channel is not None:
+        if not isinstance(slack_log_channel, str) or not slack_log_channel:
+            raise ConfigError(
+                "'telemetry.slack_log_channel' must be a non-empty string"
+            )
+
+    return TelemetryConfig(slack_log_channel=slack_log_channel)
 
 
 def _parse_tools(raw: object) -> ToolsConfig:
@@ -459,8 +498,12 @@ def load_config(
     # --- Validate tools ---
     tools = _parse_tools(data.get("tools", {}))
 
+    # --- Validate telemetry ---
+    telemetry = _parse_telemetry(data.get("telemetry", {}))
+
     config = DanClawConfig(
         agents=agents, listeners=listeners, permissions=permissions, tools=tools,
+        telemetry=telemetry,
     )
 
     # Validate that all referenced persona files and tool scripts exist.
