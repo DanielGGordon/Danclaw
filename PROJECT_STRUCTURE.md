@@ -52,17 +52,21 @@ danclaw/
 │   ├── __init__.py           # Re-exports load_persona, PersonaError
 │   ├── loader.py             # Persona loader: reads markdown files by name
 │   ├── default.md            # Default agent persona (system prompt)
+│   ├── admin.md              # Admin agent persona (full access, no approval gates)
 │   └── README.md             # Module documentation
 ├── tools/
 │   ├── __init__.py           # Python package marker
 │   ├── obsidian_read.py      # Read a file from an Obsidian vault (subprocess tool)
 │   ├── obsidian_write.py     # Create or update a file in an Obsidian vault (subprocess tool)
 │   ├── obsidian_search.py    # Search/list files in an Obsidian vault by name or content (subprocess tool)
+│   ├── git_ops.py            # Git add, commit, push operations (admin tool)
+│   ├── deploy.py             # Deploy tool: pull, rebuild, restart services (admin tool)
 │   └── README.md             # Module documentation
 ├── scripts/
 │   └── e2e_test.py           # Standalone end-to-end smoke test (requires claude CLI)
 └── tests/                    # Test suite
     ├── conftest.py           # Shared test helpers (make_config)
+    ├── test_admin_agent.py   # Tests for admin agent config, permissions, and dispatch
     ├── test_e2e_claude.py    # End-to-end integration test via ClaudeExecutor (manual marker)
     └── test_telemetry_query.py # Tests for telemetry query/filter/pagination methods
 ```

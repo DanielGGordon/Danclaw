@@ -12,6 +12,11 @@ Each persona is a `.md` file that serves as the system prompt for an agent. The 
 - **Loaded by**: `dispatcher` (reads file content at agent invocation time)
 - **Independent of**: `listeners`, `tools`
 
+## Personas
+
+- **`default.md`** — Default assistant persona. Helpful, concise, and direct.
+- **`admin.md`** — Admin agent persona with full tool access. Executes commands directly without approval gates.
+
 ## Status
 
-Scaffold only. No personas defined yet.
+Two personas defined: `default` and `admin`.

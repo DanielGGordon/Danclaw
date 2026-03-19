@@ -28,6 +28,24 @@ Three scripts provide Obsidian vault operations. All accept `--vault` (path to v
   - Prints matching relative paths to stdout (one per line). Skips hidden directories.
   - `python -m tools.obsidian_search --vault /path/to/vault --name "*.md" --query "TODO"`
 
+### Git Operations (`git_ops.py`)
+
+Git add, commit, and push operations via subprocess. Used by the admin agent for self-update workflows.
+
+- **`git_add(paths, cwd)`** — Stage files for commit.
+- **`git_commit(message, cwd)`** — Create a commit with the given message.
+- **`git_push(remote, branch, cwd)`** — Push commits to the remote.
+
+Also runnable as a CLI: `python -m tools.git_ops add --cwd /path --file1 file2`
+
+### Deploy (`deploy.py`)
+
+Deploy tool that pulls latest code, optionally rebuilds Docker images, and restarts services.
+
+- **`deploy(cwd, rebuild)`** — Execute the full deploy sequence (git pull, docker compose build, docker compose up -d).
+
+Also runnable as a CLI: `python -m tools.deploy --cwd /path [--no-rebuild]`
+
 ### Instrumented Wrappers (`instrumented.py`)
 
 `tools.instrumented` provides telemetry-emitting wrappers around the Obsidian tool functions (`read_file`, `write_file`, `search_files`). Each wrapper accepts a `telemetry` keyword argument (a `TelemetryCollector` instance) and records a `"tool_execution"` event with payload fields:
