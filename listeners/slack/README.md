@@ -28,6 +28,10 @@ python -m listeners.slack --log-level DEBUG
 
 Slack thread semantics are mapped to `channel_ref` as `<channel_id>:<thread_ts>`. For top-level messages (no thread), `channel_ref` uses `<channel_id>:<message_ts>`. This allows the dispatcher to group threaded replies into a single session.
 
+## Threaded Replies
+
+Bot responses are always posted as threaded replies to keep channels clean. When the dispatcher returns a response with a `content` field, the listener calls `say(text=content, thread_ts=thread_ts)`. For top-level messages, this creates a new thread anchored at the original message. For messages already in a thread, the reply is posted in the same thread.
+
 ## Relationship to Other Modules
 
 - **Depends on**: `dispatcher` (sends StandardMessages via Unix socket)

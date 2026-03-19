@@ -559,6 +559,204 @@ class TestHandleMessage:
             )
 
 
+# ── Threaded reply behaviour ──────────────────────────────────────────
+
+
+class TestThreadedReply:
+    """Tests for in-thread reply behaviour (_reply_in_thread and helpers)."""
+
+    @pytest.fixture
+    def listener(self):
+        with patch("listeners.slack.listener.App"):
+            from listeners.slack.listener import SlackListener
+
+            return SlackListener(
+                socket_path="/tmp/test.sock",
+                bot_token="xoxb-test",
+                app_token="xapp-test",
+            )
+
+    def test_thread_ts_for_reply_uses_thread_ts_when_present(self, listener):
+        """_thread_ts_for_reply returns thread_ts for threaded messages."""
+        event = {"ts": "1111.000", "thread_ts": "1000.000"}
+        assert listener._thread_ts_for_reply(event) == "1000.000"
+
+    def test_thread_ts_for_reply_uses_ts_for_top_level(self, listener):
+        """_thread_ts_for_reply returns ts for top-level (non-threaded) messages."""
+        event = {"ts": "1111.000"}
+        assert listener._thread_ts_for_reply(event) == "1111.000"
+
+    def test_reply_in_thread_calls_say_with_thread_ts(self, listener):
+        """_reply_in_thread calls say() with text and thread_ts."""
+        say = MagicMock()
+        event = {"ts": "1111.000"}
+        response = {"content": "Hello!"}
+
+        listener._reply_in_thread(response, event, say)
+
+        say.assert_called_once_with(text="Hello!", thread_ts="1111.000")
+
+    def test_reply_in_thread_none_response_is_noop(self, listener):
+        """_reply_in_thread does nothing when response is None."""
+        say = MagicMock()
+        listener._reply_in_thread(None, {"ts": "1111.000"}, say)
+        say.assert_not_called()
+
+    def test_reply_in_thread_empty_content_is_noop(self, listener):
+        """_reply_in_thread does nothing when response has no content."""
+        say = MagicMock()
+        listener._reply_in_thread({"status": "ok"}, {"ts": "1111.000"}, say)
+        say.assert_not_called()
+
+    def test_reply_in_thread_empty_string_content_is_noop(self, listener):
+        """_reply_in_thread does nothing when content is empty string."""
+        say = MagicMock()
+        listener._reply_in_thread({"content": ""}, {"ts": "1111.000"}, say)
+        say.assert_not_called()
+
+    def test_handle_message_replies_in_thread_for_top_level(self, listener):
+        """_handle_message replies in a new thread for top-level messages."""
+        event = {
+            "channel": "C123",
+            "user": "U456",
+            "text": "hello",
+            "ts": "1234567890.123456",
+        }
+        say = MagicMock()
+
+        with patch.object(
+            listener,
+            "_send_to_dispatcher",
+            return_value={"content": "Hi there!"},
+        ):
+            listener._handle_message(event, say)
+
+        say.assert_called_once_with(
+            text="Hi there!", thread_ts="1234567890.123456"
+        )
+
+    def test_handle_message_replies_in_existing_thread(self, listener):
+        """_handle_message replies in the existing thread when thread_ts is set."""
+        event = {
+            "channel": "C123",
+            "user": "U456",
+            "text": "follow-up",
+            "ts": "1234567891.000000",
+            "thread_ts": "1234567890.123456",
+        }
+        say = MagicMock()
+
+        with patch.object(
+            listener,
+            "_send_to_dispatcher",
+            return_value={"content": "Got it!"},
+        ):
+            listener._handle_message(event, say)
+
+        say.assert_called_once_with(
+            text="Got it!", thread_ts="1234567890.123456"
+        )
+
+    def test_handle_message_no_reply_when_dispatcher_returns_none(self, listener):
+        """_handle_message does not call say when dispatcher returns None."""
+        event = {
+            "channel": "C123",
+            "user": "U456",
+            "text": "hello",
+            "ts": "1234567890.123456",
+        }
+        say = MagicMock()
+
+        with patch.object(listener, "_send_to_dispatcher", return_value=None):
+            listener._handle_message(event, say)
+
+        say.assert_not_called()
+
+    def test_handle_message_no_reply_on_dispatcher_error(self, listener):
+        """_handle_message does not call say when dispatcher raises."""
+        event = {
+            "channel": "C123",
+            "user": "U456",
+            "text": "hello",
+            "ts": "1234567890.123456",
+        }
+        say = MagicMock()
+
+        with patch.object(
+            listener,
+            "_send_to_dispatcher",
+            side_effect=ConnectionRefusedError,
+        ):
+            listener._handle_message(event, say)
+
+        say.assert_not_called()
+
+    def test_handle_app_mention_replies_in_thread(self, listener):
+        """_handle_app_mention replies in-thread for a top-level mention."""
+        listener._bot_user_id = "U123BOT"
+        event = {
+            "channel": "C123",
+            "user": "U456",
+            "text": "<@U123BOT> do something",
+            "ts": "1234567890.123456",
+        }
+        say = MagicMock()
+
+        with patch.object(
+            listener,
+            "_send_to_dispatcher",
+            return_value={"content": "Done!"},
+        ):
+            listener._handle_app_mention(event, say)
+
+        say.assert_called_once_with(
+            text="Done!", thread_ts="1234567890.123456"
+        )
+
+    def test_handle_app_mention_replies_in_existing_thread(self, listener):
+        """_handle_app_mention replies in existing thread for threaded mention."""
+        listener._bot_user_id = "U123BOT"
+        event = {
+            "channel": "C123",
+            "user": "U456",
+            "text": "<@U123BOT> follow up",
+            "ts": "1234567891.000000",
+            "thread_ts": "1234567890.123456",
+        }
+        say = MagicMock()
+
+        with patch.object(
+            listener,
+            "_send_to_dispatcher",
+            return_value={"content": "Here you go!"},
+        ):
+            listener._handle_app_mention(event, say)
+
+        say.assert_called_once_with(
+            text="Here you go!", thread_ts="1234567890.123456"
+        )
+
+    def test_handle_app_mention_no_reply_on_error(self, listener):
+        """_handle_app_mention does not reply when dispatcher raises."""
+        listener._bot_user_id = "U123BOT"
+        event = {
+            "channel": "C123",
+            "user": "U456",
+            "text": "<@U123BOT> hello",
+            "ts": "1234567890.123456",
+        }
+        say = MagicMock()
+
+        with patch.object(
+            listener,
+            "_send_to_dispatcher",
+            side_effect=ConnectionRefusedError,
+        ):
+            listener._handle_app_mention(event, say)
+
+        say.assert_not_called()
+
+
 # ── Connection setup (start/stop) ────────────────────────────────────
 
 
