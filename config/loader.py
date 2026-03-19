@@ -91,15 +91,21 @@ def validate_config(
 
         # Check tool scripts
         for tool_name in agent.allowed_tools:
-            tool_files = [
-                m for m in tools_dir.iterdir()
-                if m.is_file() and m.stem == tool_name
-            ]
-            if not tool_files:
+            if not tools_dir.is_dir():
                 errors.append(
                     f"agents[{idx}] ({agent.name}): tool script not found "
                     f"for '{tool_name}' in {tools_dir}"
                 )
+            else:
+                tool_files = [
+                    m for m in tools_dir.iterdir()
+                    if m.is_file() and m.stem == tool_name
+                ]
+                if not tool_files:
+                    errors.append(
+                        f"agents[{idx}] ({agent.name}): tool script not found "
+                        f"for '{tool_name}' in {tools_dir}"
+                    )
 
     if errors:
         detail = "; ".join(errors)
