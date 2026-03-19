@@ -1,4 +1,4 @@
-"""Telemetry-instrumented wrappers for Obsidian vault tool functions.
+"""Telemetry-instrumented wrappers for tool functions.
 
 Each wrapper calls the underlying tool function, records a
 ``"tool_execution"`` telemetry event via a :class:`TelemetryCollector`,
@@ -6,7 +6,7 @@ and re-raises any exceptions after recording failure events.
 
 The payload for each event includes:
 
-- ``tool``: the tool name (e.g. ``"obsidian_read"``)
+- ``tool``: the tool name (e.g. ``"obsidian_read"``, ``"git_add"``)
 - ``args``: a dict of the arguments passed to the tool function
 - ``success``: boolean indicating whether the call succeeded
 - ``duration``: wall-clock seconds the call took
@@ -20,6 +20,9 @@ from pathlib import Path
 from typing import Any
 
 from dispatcher.telemetry import TelemetryCollector
+from tools.git_ops import git_add as _git_add
+from tools.git_ops import git_commit as _git_commit
+from tools.git_ops import git_push as _git_push
 from tools.obsidian_read import read_file as _read_file
 from tools.obsidian_search import search_files as _search_files
 from tools.obsidian_write import write_file as _write_file
@@ -137,6 +140,102 @@ def search_files(
     duration = time.monotonic() - start
     _record_event(
         telemetry, "obsidian_search", args,
+        success=True, duration=duration,
+    )
+    return result
+
+
+# ── Git operations ─────────────────────────────────────────────────────
+
+
+def git_add(
+    paths: list[str],
+    *,
+    cwd: str | Path,
+    telemetry: TelemetryCollector,
+) -> str:
+    """Stage files for commit with telemetry.
+
+    Wraps :func:`tools.git_ops.git_add`, recording a
+    ``tool_execution`` event on both success and failure.
+    """
+    args: dict[str, Any] = {"paths": paths, "cwd": str(cwd)}
+    start = time.monotonic()
+    try:
+        result = _git_add(paths, cwd=cwd)
+    except Exception as exc:
+        duration = time.monotonic() - start
+        _record_event(
+            telemetry, "git_add", args,
+            success=False, duration=duration, error=str(exc),
+        )
+        raise
+    duration = time.monotonic() - start
+    _record_event(
+        telemetry, "git_add", args,
+        success=True, duration=duration,
+    )
+    return result
+
+
+def git_commit(
+    message: str,
+    *,
+    cwd: str | Path,
+    telemetry: TelemetryCollector,
+) -> str:
+    """Create a commit with telemetry.
+
+    Wraps :func:`tools.git_ops.git_commit`, recording a
+    ``tool_execution`` event on both success and failure.
+    """
+    args: dict[str, Any] = {"message": message, "cwd": str(cwd)}
+    start = time.monotonic()
+    try:
+        result = _git_commit(message, cwd=cwd)
+    except Exception as exc:
+        duration = time.monotonic() - start
+        _record_event(
+            telemetry, "git_commit", args,
+            success=False, duration=duration, error=str(exc),
+        )
+        raise
+    duration = time.monotonic() - start
+    _record_event(
+        telemetry, "git_commit", args,
+        success=True, duration=duration,
+    )
+    return result
+
+
+def git_push(
+    *,
+    remote: str = "origin",
+    branch: str | None = None,
+    cwd: str | Path,
+    telemetry: TelemetryCollector,
+) -> str:
+    """Push commits to remote with telemetry.
+
+    Wraps :func:`tools.git_ops.git_push`, recording a
+    ``tool_execution`` event on both success and failure.
+    """
+    args: dict[str, Any] = {"remote": remote, "cwd": str(cwd)}
+    if branch is not None:
+        args["branch"] = branch
+    start = time.monotonic()
+    try:
+        result = _git_push(remote=remote, branch=branch, cwd=cwd)
+    except Exception as exc:
+        duration = time.monotonic() - start
+        _record_event(
+            telemetry, "git_push", args,
+            success=False, duration=duration, error=str(exc),
+        )
+        raise
+    duration = time.monotonic() - start
+    _record_event(
+        telemetry, "git_push", args,
         success=True, duration=duration,
     )
     return result
