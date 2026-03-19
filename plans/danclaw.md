@@ -160,7 +160,7 @@ Slack Socket Mode bot that listens for messages (channel messages, DMs, @mention
 - [x] Bot responds to @mentions and DMs
 - [x] Each Slack thread maps to a unique session (thread_ts → session ID)
 - [x] Bot replies in-thread, keeping the channel clean
-- [ ] Multi-turn: bot asks a question → state=WAITING_FOR_HUMAN → user replies in thread → session resumes
+- [x] Multi-turn: bot asks a question → state=WAITING_FOR_HUMAN → user replies in thread → session resumes
 - [ ] Bot ignores its own messages (no loops)
 - [ ] Slack listener runs as its own Docker container/service
 - [ ] Slack tokens loaded from `.env`, never logged
