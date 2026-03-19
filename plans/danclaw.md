@@ -157,7 +157,7 @@ Slack Socket Mode bot that listens for messages (channel messages, DMs, @mention
 ### Acceptance criteria
 
 - [x] Slack listener connects via Socket Mode using `slack-bolt` (no public webhook needed)
-- [ ] Bot responds to @mentions and DMs
+- [x] Bot responds to @mentions and DMs
 - [ ] Each Slack thread maps to a unique session (thread_ts → session ID)
 - [ ] Bot replies in-thread, keeping the channel clean
 - [ ] Multi-turn: bot asks a question → state=WAITING_FOR_HUMAN → user replies in thread → session resumes

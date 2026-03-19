@@ -20,6 +20,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import socket as sock_mod
 from pathlib import Path
 from typing import Optional
@@ -66,14 +67,30 @@ class SlackListener:
 
         self._app = App(token=self._bot_token)
         self._handler: Optional[SocketModeHandler] = None
+        self._bot_user_id: Optional[str] = None
 
-        # Register the message listener
+        # Register event listeners
         self._app.event("message")(self._handle_message)
+        self._app.event("app_mention")(self._handle_app_mention)
 
     @property
     def app(self) -> App:
         """Return the underlying slack-bolt App instance."""
         return self._app
+
+    @staticmethod
+    def strip_mention(text: str, bot_user_id: Optional[str] = None) -> str:
+        """Remove a leading ``<@BOT_ID>`` mention from *text*.
+
+        If *bot_user_id* is provided, only that specific mention is stripped.
+        Otherwise any leading ``<@...>`` mention is removed.  Surrounding
+        whitespace is cleaned up.
+        """
+        if bot_user_id:
+            pattern = rf"^\s*<@{re.escape(bot_user_id)}>\s*"
+        else:
+            pattern = r"^\s*<@[A-Z0-9]+>\s*"
+        return re.sub(pattern, "", text).strip()
 
     def _build_channel_ref(self, channel: str, thread_ts: Optional[str], ts: str) -> str:
         """Build a channel_ref from Slack event fields.
@@ -87,11 +104,21 @@ class SlackListener:
     def message_to_standard(
         self,
         event: dict,
+        *,
+        should_strip_mention: bool = False,
     ) -> Optional[StandardMessage]:
         """Convert a Slack message event dict to a StandardMessage.
 
         Returns None for events that should be ignored (bot messages,
         message subtypes like edits/deletes, etc.).
+
+        Parameters
+        ----------
+        event:
+            The Slack event payload dict.
+        should_strip_mention:
+            When True, strip a leading ``<@BOT_ID>`` mention from the
+            message text (used for ``app_mention`` events).
         """
         # Ignore bot messages to prevent loops
         if event.get("bot_id") or event.get("subtype") == "bot_message":
@@ -110,6 +137,9 @@ class SlackListener:
         ts = event.get("ts", "")
         thread_ts = event.get("thread_ts")
 
+        if should_strip_mention:
+            text = self.strip_mention(text, self._bot_user_id)
+
         if not channel or not user or not text:
             logger.debug("Ignoring incomplete message event: %s", event)
             return None
@@ -127,6 +157,8 @@ class SlackListener:
         """Handle a Slack message event.
 
         Converts to StandardMessage and sends to dispatcher via Unix socket.
+        DMs (channel_type == "im") are processed directly; channel messages
+        require an explicit @mention (handled by ``_handle_app_mention``).
         """
         msg = self.message_to_standard(event)
         if msg is None:
@@ -136,6 +168,21 @@ class SlackListener:
             self._send_to_dispatcher(msg)
         except Exception:
             logger.exception("Failed to send message to dispatcher")
+
+    def _handle_app_mention(self, event: dict, say) -> None:
+        """Handle an ``app_mention`` event.
+
+        Strips the leading ``<@BOT_ID>`` from the text and forwards the
+        cleaned message to the dispatcher.
+        """
+        msg = self.message_to_standard(event, should_strip_mention=True)
+        if msg is None:
+            return
+
+        try:
+            self._send_to_dispatcher(msg)
+        except Exception:
+            logger.exception("Failed to send mention to dispatcher")
 
     def _send_to_dispatcher(self, message: StandardMessage) -> None:
         """Send a StandardMessage to the dispatcher over the Unix socket.
@@ -163,8 +210,21 @@ class SlackListener:
                 logger.debug("Dispatcher response: %s", response)
 
     def start(self) -> None:
-        """Start the Slack listener in Socket Mode (blocking)."""
+        """Start the Slack listener in Socket Mode (blocking).
+
+        Resolves the bot's own user ID (via ``auth.test``) so that
+        ``strip_mention`` can target the correct ``<@BOT_ID>`` prefix.
+        """
         logger.info("Starting Slack listener (Socket Mode)")
+        try:
+            auth_response = self._app.client.auth_test()
+            self._bot_user_id = auth_response.get("user_id")
+            logger.info("Bot user ID resolved: %s", self._bot_user_id)
+        except Exception:
+            logger.warning(
+                "Could not resolve bot user ID via auth.test; "
+                "mention stripping will use a generic pattern"
+            )
         self._handler = SocketModeHandler(self._app, self._app_token)
         self._handler.start()
 
