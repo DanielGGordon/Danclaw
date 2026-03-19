@@ -733,6 +733,7 @@ class TestSimulatedSocketPipeline:
 
             # All turns should be in the same session
             assert r2["session_id"] == session_id
+            assert r3["session_id"] == session_id
 
             writer.close()
             await writer.wait_closed()
@@ -780,8 +781,6 @@ _skip_reason = (
     "Requires 'claude' CLI on PATH and a live Slack bot; "
     "run with: pytest tests/test_e2e_obsidian.py -v -m manual"
 )
-
-pytestmark_manual = pytest.mark.manual
 
 
 @pytest.mark.manual
