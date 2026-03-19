@@ -16,11 +16,14 @@ can also create their own instances.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
+
+logger = logging.getLogger(__name__)
 
 from dispatcher.repository import Repository
 
@@ -181,7 +184,10 @@ class TelemetryCollector:
         )
         self._events.append(event)
         for sink in self._sinks:
-            sink.write(event)
+            try:
+                sink.write(event)
+            except Exception:
+                logger.exception("Telemetry sink %r failed to write event", sink)
         return event
 
     async def flush(self) -> None:
