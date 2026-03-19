@@ -185,21 +185,24 @@ def _fanout_reader(
         if not chunk:
             break
         buf.extend(chunk)
-        # Process any complete lines in the buffer
-        while b"\n" in buf:
-            idx = buf.index(b"\n")
-            line = bytes(buf[:idx])
+        # Process any complete lines in the buffer, skipping over
+        # non-fanout messages (left in place for _send_recv to consume).
+        scan_pos = 0
+        while True:
+            nl_idx = buf.find(b"\n", scan_pos)
+            if nl_idx == -1:
+                break
+            line = bytes(buf[scan_pos:nl_idx])
             try:
                 msg = json.loads(line)
             except (json.JSONDecodeError, UnicodeDecodeError):
-                del buf[:idx + 1]
+                del buf[scan_pos:nl_idx + 1]
                 continue
             if msg.get("type") == "fanout":
-                del buf[:idx + 1]
+                del buf[scan_pos:nl_idx + 1]
                 _print_fanout(msg, print_fn)
             else:
-                # Leave non-fanout messages in the buffer for _send_recv
-                break
+                scan_pos = nl_idx + 1
 
 
 def _chat_loop(
@@ -301,9 +304,10 @@ def _chat_loop(
         print_fn("\nGoodbye.")
     finally:
         stop_event.set()
-        reader_thread.join(timeout=2)
-        if reader_thread.is_alive():
-            reader_thread.join()
+        if reader_thread.ident is not None:
+            reader_thread.join(timeout=2)
+            if reader_thread.is_alive():
+                reader_thread.join()
 
     return channel_ref
 
