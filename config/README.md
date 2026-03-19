@@ -12,14 +12,15 @@ Configuration loading and validation. Reads the JSON config file that defines ag
 
 - `load_config(path, *, personas_dir=None)` — Reads and validates the JSON config file, returns a `DanClawConfig` instance. Raises `ConfigError` on any validation failure.
 - `DanClawConfig` — Frozen dataclass: `agents: list[AgentConfig]`, `listeners: dict`.
-- `AgentConfig` — Frozen dataclass: `name`, `persona`, `backend_preference`, `tools`.
+- `AgentConfig` — Frozen dataclass: `name`, `persona`, `backend_preference`, `allowed_tools`.
 - `ConfigError` — Exception raised for invalid or missing config.
 
 ## Validation Rules
 
 - Config must be a JSON object with an `agents` list (non-empty).
-- Each agent must have `name` (non-empty string), `persona` (non-empty string), and `backend_preference` (non-empty list of strings).
-- `tools` defaults to an empty list if omitted.
+- Each agent must have `name` (non-empty string), `persona` (non-empty string referencing a markdown file in `personas/`), and `backend_preference` (non-empty ordered list of strings like `["claude", "codex"]`).
+- `allowed_tools` defaults to an empty list if omitted. Entries must be non-empty strings.
+- Agent names must be unique across the config.
 - Each agent's `persona` must correspond to an existing `<persona>.md` file in `personas/`.
 - `listeners` must be a dict (defaults to `{}` if omitted).
 
@@ -31,4 +32,4 @@ Configuration loading and validation. Reads the JSON config file that defines ag
 
 ## Status
 
-Config loader implemented and tested (22 tests).
+Config loader implemented and tested (26 tests).
