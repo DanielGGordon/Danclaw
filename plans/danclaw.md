@@ -141,7 +141,7 @@ Replace the mocked executor with real `claude -p` and `codex` invocations. The e
 - [x] Backend preference order read from agent config (default: `["claude", "codex"]`)
 - [x] Timeout configurable per agent
 - [x] Fallback notification: configurable per persona — silent, notify user, or custom message
-- [ ] Telemetry event emitted on fallback (which backend failed, which succeeded)
+- [x] Telemetry event emitted on fallback (which backend failed, which succeeded)
 - [ ] End-to-end test via terminal listener: send a real message, get a real AI response
 
 ---

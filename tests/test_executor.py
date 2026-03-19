@@ -16,6 +16,7 @@ from dispatcher.executor import (
     build_executor,
 )
 from dispatcher.models import StandardMessage
+from dispatcher.telemetry import TelemetryCollector
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -847,3 +848,158 @@ class TestBuildExecutorFallbackNotification:
             notification_callback=lambda text: calls.append(text),
         )
         assert executor._notification_callback is not None
+
+
+# ── Fallback telemetry tests ─────────────────────────────────────────
+
+class TestFallbackTelemetryOnFallback:
+    """Telemetry event emitted when a fallback occurs."""
+
+    @pytest.mark.asyncio
+    async def test_fallback_emits_telemetry_event(self):
+        failing = MockExecutor()
+        async def _raise(*a, **kw):
+            raise RuntimeError("primary failed")
+        failing.execute = _raise
+
+        backup = MockExecutor(fixed_response="ok")
+        collector = TelemetryCollector()
+        executor = FallbackExecutor(
+            [failing, backup], telemetry=collector,
+        )
+        await executor.execute(_make_message("hi"))
+        assert len(collector.events) == 1
+        assert collector.events[0].event_type == "fallback"
+
+    @pytest.mark.asyncio
+    async def test_fallback_event_contains_failed_backend(self):
+        failing = MockExecutor()
+        async def _raise(*a, **kw):
+            raise RuntimeError("primary failed")
+        failing.execute = _raise
+
+        backup = MockExecutor(fixed_response="ok")
+        collector = TelemetryCollector()
+        executor = FallbackExecutor(
+            [failing, backup], telemetry=collector,
+        )
+        await executor.execute(_make_message("hi"))
+        event = collector.events[0]
+        assert event.payload["failed_backends"] == ["mock"]
+        assert event.payload["succeeded_backend"] == "mock"
+
+    @pytest.mark.asyncio
+    async def test_fallback_event_contains_succeeded_backend(self):
+        failing = MockExecutor()
+        async def _raise(*a, **kw):
+            raise RuntimeError("primary failed")
+        failing.execute = _raise
+
+        backup = MockExecutor(fixed_response="ok")
+        collector = TelemetryCollector()
+        executor = FallbackExecutor(
+            [failing, backup], telemetry=collector,
+        )
+        await executor.execute(_make_message("hi"))
+        event = collector.events[0]
+        assert "succeeded_backend" in event.payload
+        assert event.payload["succeeded_backend"] == "mock"
+
+    @pytest.mark.asyncio
+    async def test_fallback_event_has_timestamp(self):
+        import time
+        failing = MockExecutor()
+        async def _raise(*a, **kw):
+            raise RuntimeError("primary failed")
+        failing.execute = _raise
+
+        backup = MockExecutor(fixed_response="ok")
+        collector = TelemetryCollector()
+        executor = FallbackExecutor(
+            [failing, backup], telemetry=collector,
+        )
+        before = time.time()
+        await executor.execute(_make_message("hi"))
+        after = time.time()
+        assert before <= collector.events[0].timestamp <= after
+
+    @pytest.mark.asyncio
+    async def test_multiple_failures_tracked(self):
+        """When two executors fail, both appear in failed_backends."""
+        fail1 = MockExecutor()
+        async def _raise1(*a, **kw):
+            raise RuntimeError("fail 1")
+        fail1.execute = _raise1
+
+        fail2 = MockExecutor()
+        async def _raise2(*a, **kw):
+            raise RuntimeError("fail 2")
+        fail2.execute = _raise2
+
+        backup = MockExecutor(fixed_response="ok")
+        collector = TelemetryCollector()
+        executor = FallbackExecutor(
+            [fail1, fail2, backup], telemetry=collector,
+        )
+        await executor.execute(_make_message("hi"))
+        event = collector.events[0]
+        assert event.payload["failed_backends"] == [
+            "mock", "mock",
+        ]
+        assert event.payload["succeeded_backend"] == "mock"
+
+
+class TestFallbackTelemetryPrimarySuccess:
+    """No telemetry event when the primary executor succeeds."""
+
+    @pytest.mark.asyncio
+    async def test_no_event_on_primary_success(self):
+        primary = MockExecutor(fixed_response="ok")
+        backup = MockExecutor(fixed_response="backup")
+        collector = TelemetryCollector()
+        executor = FallbackExecutor(
+            [primary, backup], telemetry=collector,
+        )
+        await executor.execute(_make_message("hi"))
+        assert len(collector.events) == 0
+
+    @pytest.mark.asyncio
+    async def test_no_event_single_executor_success(self):
+        primary = MockExecutor(fixed_response="ok")
+        collector = TelemetryCollector()
+        executor = FallbackExecutor(
+            [primary], telemetry=collector,
+        )
+        await executor.execute(_make_message("hi"))
+        assert len(collector.events) == 0
+
+
+class TestFallbackTelemetryWithoutCollector:
+    """No crash when telemetry is not configured."""
+
+    @pytest.mark.asyncio
+    async def test_fallback_works_without_telemetry(self):
+        failing = MockExecutor()
+        async def _raise(*a, **kw):
+            raise RuntimeError("primary failed")
+        failing.execute = _raise
+
+        backup = MockExecutor(fixed_response="ok")
+        executor = FallbackExecutor([failing, backup])
+        result = await executor.execute(_make_message("hi"))
+        assert result.content == "ok"
+
+
+class TestBuildExecutorTelemetry:
+    """build_executor passes telemetry through to FallbackExecutor."""
+
+    def test_telemetry_passed_through(self):
+        collector = TelemetryCollector()
+        executor = build_executor(
+            ["claude", "codex"], telemetry=collector,
+        )
+        assert executor._telemetry is collector
+
+    def test_default_telemetry_is_none(self):
+        executor = build_executor(["claude"])
+        assert executor._telemetry is None

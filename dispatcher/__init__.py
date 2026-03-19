@@ -13,6 +13,7 @@ from dispatcher.permissions import requires_approval, resolve_permissions
 from dispatcher.repository import Repository
 from dispatcher.session_manager import SessionManager
 from dispatcher.socket_server import SocketServer
+from dispatcher.telemetry import TelemetryCollector, TelemetryEvent
 
 __all__ = [
     "StandardMessage",
@@ -30,4 +31,6 @@ __all__ = [
     "SocketServer",
     "requires_approval",
     "resolve_permissions",
+    "TelemetryCollector",
+    "TelemetryEvent",
 ]
