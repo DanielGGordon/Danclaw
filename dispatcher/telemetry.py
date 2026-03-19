@@ -1,13 +1,15 @@
 """Telemetry event recording with pluggable sinks.
 
 Provides a :class:`TelemetryCollector` that records structured telemetry
-events and fans them out to one or more sinks.  Three sink types are
+events and fans them out to one or more sinks.  Four sink types are
 available:
 
 - **In-memory** (default) — events are stored in a list on the collector.
 - **JSONL file** — each event is appended as a JSON line to a file.
 - **DB** — events are stored in the ``telemetry_events`` table via the
   :class:`~dispatcher.repository.Repository`.
+- **Slack log** — posts summaries to a Slack channel when sessions
+  complete or errors occur.
 
 A module-level default collector is available for convenience, but callers
 can also create their own instances.
@@ -16,12 +18,18 @@ can also create their own instances.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
+
 from dispatcher.repository import Repository
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -134,6 +142,72 @@ class DbSink:
                 source=event.source,
                 status=event.status,
             )
+
+
+class SlackLogSink:
+    """Posts summaries to a Slack channel on session completion or errors.
+
+    The sink reacts to two categories of telemetry event:
+
+    - ``session_state_changed`` with status ``DONE`` or ``ERROR`` — posts a
+      session completion / error summary.
+    - ``error`` — posts an error notification.
+
+    All other events are silently ignored.
+
+    Parameters
+    ----------
+    client:
+        An initialised :class:`slack_sdk.WebClient` with a valid bot token.
+    channel:
+        The Slack channel ID (e.g. ``"C0123456789"``) to post messages to.
+    """
+
+    # Event types / statuses that trigger a Slack post.
+    _TRIGGER_EVENT_TYPES = frozenset({"session_state_changed", "error"})
+    _TRIGGER_STATUSES = frozenset({"DONE", "ERROR"})
+
+    def __init__(self, client: WebClient, channel: str) -> None:
+        self._client = client
+        self._channel = channel
+
+    @property
+    def client(self) -> WebClient:
+        return self._client
+
+    @property
+    def channel(self) -> str:
+        return self._channel
+
+    def write(self, event: TelemetryEvent) -> None:
+        """Post a summary to Slack if the event is actionable."""
+        message = self._format(event)
+        if message is None:
+            return
+        try:
+            self._client.chat_postMessage(channel=self._channel, text=message)
+        except SlackApiError:
+            logger.exception("SlackLogSink: failed to post message")
+
+    # ── internal helpers ──────────────────────────────────────────────
+
+    def _format(self, event: TelemetryEvent) -> str | None:
+        """Return a formatted message string, or ``None`` to skip."""
+        if event.event_type == "session_state_changed":
+            new_state = event.payload.get("new_state", event.status)
+            if new_state not in self._TRIGGER_STATUSES:
+                return None
+            session_id = event.session_id or "unknown"
+            return (
+                f"Session `{session_id}` completed with status *{new_state}*."
+            )
+        if event.event_type == "error":
+            session_id = event.session_id or "unknown"
+            detail = event.payload.get("error", "no details")
+            return (
+                f"Error in session `{session_id}`: {detail}"
+            )
+        return None
 
 
 # ── Collector ────────────────────────────────────────────────────────

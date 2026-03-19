@@ -57,6 +57,7 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
   - `clear()` — removes all recorded in-memory events.
 - `JsonlSink(path)` — telemetry sink that appends each event as a JSON line to a file. Created on first write.
 - `DbSink(repo)` — telemetry sink that stores events in the `telemetry_events` DB table via the Repository. Events are buffered and persisted on `flush()`.
+- `SlackLogSink(client, channel)` — telemetry sink that posts summaries to a Slack channel using the Slack Web API (`chat.postMessage`). Reacts to `session_state_changed` events with `new_state` of `DONE` or `ERROR`, and to `error` events. All other events are silently ignored. Slack API errors are caught and logged without propagating. The `client` parameter is a `slack_sdk.WebClient` with a valid bot token; `channel` is the target Slack channel ID.
 - `default_collector` — module-level `TelemetryCollector` instance available via `dispatcher.telemetry.default_collector`.
 - `requires_approval(config, channel, user_id)` — returns ``True`` if any applicable permission layer (channel or user) has ``approval_required=True``. When the channel has ``override=True``, only the channel's flag is considered. This is a resolved boolean checkpoint; the actual "wait for approval" flow will be built when the executor is real.
 - Returns response messages to the calling listener
