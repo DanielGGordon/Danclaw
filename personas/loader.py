@@ -33,12 +33,18 @@ def load_persona(
     if not name or not isinstance(name, str):
         raise PersonaError("Persona name must be a non-empty string")
 
+    if any(c in name for c in ("/", "\\", "\0")) or ".." in name:
+        raise PersonaError("Persona name contains invalid characters")
+
     if personas_dir is None:
         personas_dir = _DEFAULT_PERSONAS_DIR
     else:
         personas_dir = Path(personas_dir)
 
-    persona_file = personas_dir / f"{name}.md"
+    persona_file = (personas_dir / f"{name}.md").resolve()
+
+    if not persona_file.is_relative_to(personas_dir.resolve()):
+        raise PersonaError("Persona name contains invalid path components")
 
     if not persona_file.exists():
         raise PersonaError(f"Persona file not found: {persona_file}")

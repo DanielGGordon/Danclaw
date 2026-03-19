@@ -19,7 +19,7 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["dispatcher*", "config*", "listeners*", "tools*", "cli*"]
+include = ["dispatcher*", "config*", "listeners*", "tools*", "cli*", "personas*"]
 
 [project.scripts]
 agent = "cli.agent:main"
