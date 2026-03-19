@@ -46,6 +46,14 @@ Deploy tool that pulls latest code, optionally rebuilds Docker images, and resta
 
 Also runnable as a CLI: `python -m tools.deploy --cwd /path [--no-rebuild]`
 
+### Trigger Deploy (`trigger_deploy.py`)
+
+Agent-callable entry point for deployments. Unlike `deploy.py` (which requires an explicit `--cwd`), `trigger_deploy` automatically resolves the danclaw project root, making it suitable for direct invocation by the admin agent.
+
+- **`trigger_deploy(cwd, rebuild)`** — Trigger a deploy, defaulting to the danclaw project root.
+
+Also runnable as a CLI: `python -m tools.trigger_deploy [--cwd /path] [--no-rebuild]`
+
 ### Instrumented Wrappers (`instrumented.py`)
 
 `tools.instrumented` provides telemetry-emitting wrappers around tool functions. Each wrapper accepts a `telemetry` keyword argument (a `TelemetryCollector` instance) and records a `"tool_execution"` event with payload fields:
@@ -59,7 +67,7 @@ Also runnable as a CLI: `python -m tools.deploy --cwd /path [--no-rebuild]`
 Wrapped tools:
 - **Obsidian**: `read_file`, `write_file`, `search_files`
 - **Git operations**: `git_add`, `git_commit`, `git_push`
-- **Deploy**: `deploy`
+- **Deploy**: `deploy`, `trigger_deploy`
 
 Events are emitted on both success and failure (exceptions are re-raised after recording).
 

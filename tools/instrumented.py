@@ -21,6 +21,7 @@ from typing import Any
 
 from dispatcher.telemetry import TelemetryCollector
 from tools.deploy import deploy as _deploy
+from tools.trigger_deploy import trigger_deploy as _trigger_deploy
 from tools.git_ops import git_add as _git_add
 from tools.git_ops import git_commit as _git_commit
 from tools.git_ops import git_push as _git_push
@@ -174,6 +175,38 @@ def deploy(
     duration = time.monotonic() - start
     _record_event(
         telemetry, "deploy", args,
+        success=True, duration=duration,
+    )
+    return result
+
+
+def trigger_deploy(
+    *,
+    cwd: str | Path | None = None,
+    rebuild: bool = True,
+    telemetry: TelemetryCollector,
+) -> str:
+    """Trigger a deploy via agent tool entry point with telemetry.
+
+    Wraps :func:`tools.trigger_deploy.trigger_deploy`, recording a
+    ``tool_execution`` event on both success and failure.
+    """
+    args: dict[str, Any] = {"rebuild": rebuild}
+    if cwd is not None:
+        args["cwd"] = str(cwd)
+    start = time.monotonic()
+    try:
+        result = _trigger_deploy(cwd=cwd, rebuild=rebuild)
+    except Exception as exc:
+        duration = time.monotonic() - start
+        _record_event(
+            telemetry, "trigger_deploy", args,
+            success=False, duration=duration, error=str(exc),
+        )
+        raise
+    duration = time.monotonic() - start
+    _record_event(
+        telemetry, "trigger_deploy", args,
         success=True, duration=duration,
     )
     return result

@@ -61,6 +61,7 @@ danclaw/
 │   ├── obsidian_search.py    # Search/list files in an Obsidian vault by name or content (subprocess tool)
 │   ├── git_ops.py            # Git add, commit, push operations (admin tool)
 │   ├── deploy.py             # Deploy tool: pull, rebuild, restart services (admin tool)
+│   ├── trigger_deploy.py     # Agent-callable deploy entry point with auto project root detection
 │   ├── instrumented.py       # Telemetry-instrumented wrappers for all tool functions
 │   └── README.md             # Module documentation
 ├── scripts/
@@ -73,6 +74,7 @@ danclaw/
     ├── test_git_ops_telemetry.py # Tests for telemetry-instrumented git operation wrappers
     ├── test_deploy.py          # Tests for deploy tool: pull, build, restart sequence
     ├── test_deploy_telemetry.py # Tests for telemetry-instrumented deploy wrapper
+    ├── test_trigger_deploy.py   # Tests for agent-triggered deploy: tool, telemetry, permissions, and dispatcher integration
     └── test_telemetry_query.py # Tests for telemetry query/filter/pagination methods
 ```
 
