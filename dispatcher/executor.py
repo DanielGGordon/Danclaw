@@ -113,9 +113,13 @@ class ClaudeExecutor:
         ``"claude"``.
     """
 
-    def __init__(self, claude_bin: str = "claude") -> None:
+    def __init__(
+        self, claude_bin: str = "claude", timeout: float = 300.0,
+    ) -> None:
         self._claude_bin = claude_bin
-        self._claude_sessions: dict[str, str] = {}
+        self._timeout = timeout
+        self._sessions_by_id: dict[str, str] = {}
+        self._sessions_by_channel: dict[str, tuple[str | None, str]] = {}
 
     async def execute(
         self,
@@ -139,10 +143,16 @@ class ClaudeExecutor:
         cmd = [self._claude_bin, "-p", message.content,
                "--output-format", "json"]
 
-        claude_session_id = (
-            self._claude_sessions.get(message.session_id or "")
-            or self._claude_sessions.get(message.channel_ref)
-        )
+        claude_session_id = None
+        if message.session_id:
+            claude_session_id = self._sessions_by_id.get(message.session_id)
+        if not claude_session_id:
+            entry = self._sessions_by_channel.get(message.channel_ref)
+            if entry is not None:
+                stored_sid, stored_claude_sid = entry
+                if not (stored_sid and message.session_id
+                        and stored_sid != message.session_id):
+                    claude_session_id = stored_claude_sid
         if claude_session_id:
             cmd.extend(["--resume", claude_session_id])
 
@@ -159,7 +169,16 @@ class ClaudeExecutor:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await proc.communicate()
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=self._timeout,
+            )
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise RuntimeError(
+                f"claude subprocess timed out after {self._timeout}s"
+            )
 
         if proc.returncode != 0:
             stderr_text = stderr.decode(errors="replace").strip()
@@ -177,8 +196,10 @@ class ClaudeExecutor:
 
         new_claude_sid = data.get("session_id") if isinstance(data, dict) else None
         if new_claude_sid:
-            self._claude_sessions[message.channel_ref] = new_claude_sid
+            self._sessions_by_channel[message.channel_ref] = (
+                message.session_id, new_claude_sid,
+            )
             if message.session_id:
-                self._claude_sessions[message.session_id] = new_claude_sid
+                self._sessions_by_id[message.session_id] = new_claude_sid
 
         return ExecutorResult(content=content, backend="claude")
