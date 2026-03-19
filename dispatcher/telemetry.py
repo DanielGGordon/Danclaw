@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -115,7 +116,7 @@ class DbSink:
 
     def __init__(self, repo: Repository) -> None:
         self._repo = repo
-        self._pending: list[TelemetryEvent] = []
+        self._pending: deque[TelemetryEvent] = deque()
 
     @property
     def repo(self) -> Repository:
@@ -132,7 +133,7 @@ class DbSink:
     async def flush(self) -> None:
         """Persist all pending events to the database."""
         while self._pending:
-            event = self._pending.pop(0)
+            event = self._pending.popleft()
             await self._repo.save_telemetry_event(
                 event_type=event.event_type,
                 payload=event.payload,
