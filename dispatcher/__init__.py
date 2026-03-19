@@ -1,6 +1,6 @@
 from dispatcher.database import init_db
 from dispatcher.dispatcher import Dispatcher, DispatchResult
-from dispatcher.executor import ExecutorResult, MockExecutor
+from dispatcher.executor import ClaudeExecutor, ExecutorResult, MockExecutor
 from dispatcher.models import StandardMessage
 from dispatcher.permissions import requires_approval, resolve_permissions
 from dispatcher.repository import Repository
@@ -14,6 +14,7 @@ __all__ = [
     "DispatchResult",
     "Repository",
     "SessionManager",
+    "ClaudeExecutor",
     "ExecutorResult",
     "MockExecutor",
     "SocketServer",
