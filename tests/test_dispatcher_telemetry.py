@@ -93,6 +93,8 @@ async def test_emits_message_received(mgr, repo, personas_dir, telemetry):
     assert len(events) == 1
     assert events[0].payload["source"] == "slack"
     assert events[0].payload["user_id"] == "u42"
+    assert events[0].source == "slack"
+    assert events[0].status == "ok"
 
 
 # ── session_resolved ─────────────────────────────────────────────────
@@ -112,6 +114,8 @@ async def test_emits_session_resolved(mgr, repo, personas_dir, telemetry):
     assert len(events) == 1
     assert events[0].payload["session_id"] == result.session_id
     assert events[0].payload["agent_name"] == "agent"
+    assert events[0].session_id == result.session_id
+    assert events[0].source == "terminal"
 
 
 # ── permission_resolved ──────────────────────────────────────────────
@@ -199,6 +203,8 @@ async def test_emits_executor_invoked(mgr, repo, personas_dir, telemetry):
     assert len(events) == 1
     assert events[0].payload["session_id"] == result.session_id
     assert events[0].payload["agent_name"] == "agent"
+    assert events[0].session_id == result.session_id
+    assert events[0].source == "terminal"
 
 
 @pytest.mark.asyncio
@@ -335,6 +341,8 @@ async def test_emits_error_on_executor_failure(mgr, repo, personas_dir, telemetr
     assert len(events) == 1
     assert events[0].payload["error"] == "backend crashed"
     assert events[0].payload["error_type"] == "RuntimeError"
+    assert events[0].status == "error"
+    assert events[0].source == "terminal"
 
 
 @pytest.mark.asyncio

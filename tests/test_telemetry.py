@@ -17,6 +17,18 @@ class TestTelemetryEvent:
         assert event.event_type == "test"
         assert event.payload == {"key": "val"}
         assert event.timestamp == 1000.0
+        assert event.session_id is None
+        assert event.source is None
+        assert event.status == "ok"
+
+    def test_fields_with_context(self):
+        event = TelemetryEvent(
+            event_type="test", payload={}, timestamp=1000.0,
+            session_id="sess-1", source="slack", status="error",
+        )
+        assert event.session_id == "sess-1"
+        assert event.source == "slack"
+        assert event.status == "error"
 
     def test_frozen(self):
         event = TelemetryEvent(

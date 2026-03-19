@@ -43,6 +43,9 @@ CREATE TABLE IF NOT EXISTS channel_bindings (
 CREATE TABLE IF NOT EXISTS telemetry_events (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     event_type  TEXT NOT NULL,
+    session_id  TEXT,
+    source      TEXT,
+    status      TEXT NOT NULL DEFAULT 'ok',
     payload     TEXT NOT NULL,
     timestamp   REAL NOT NULL,
     created_at  TEXT NOT NULL

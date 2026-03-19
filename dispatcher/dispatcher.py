@@ -116,10 +116,23 @@ class Dispatcher:
         self._telemetry = telemetry
         self._last_resolved_permissions: frozenset[str] = frozenset()
 
-    def _emit(self, event_type: str, payload: dict | None = None) -> None:
+    def _emit(
+        self,
+        event_type: str,
+        payload: dict | None = None,
+        *,
+        session_id: str | None = None,
+        source: str | None = None,
+        status: str = "ok",
+    ) -> None:
         """Record a telemetry event if a collector is configured."""
         if self._telemetry is not None:
-            self._telemetry.record(event_type, payload)
+            self._telemetry.record(
+                event_type, payload,
+                session_id=session_id,
+                source=source,
+                status=status,
+            )
 
     async def _fanout_channels(
         self, session_id: str, source_channel_ref: str,
@@ -155,7 +168,7 @@ class Dispatcher:
             "source": message.source,
             "channel_ref": message.channel_ref,
             "user_id": message.user_id,
-        })
+        }, source=message.source)
 
         # 2. Resolve agent from config (default agent for now)
         agent = self._config.default_agent
@@ -170,7 +183,7 @@ class Dispatcher:
             "session_id": session_id,
             "agent_name": agent_name,
             "state": session.state,
-        })
+        }, session_id=session_id, source=message.source)
 
         # 3a. Resume from WAITING_FOR_HUMAN — transition back to ACTIVE
         resumed_from_waiting = False
@@ -183,7 +196,7 @@ class Dispatcher:
                 "session_id": session_id,
                 "from_state": "WAITING_FOR_HUMAN",
                 "to_state": "ACTIVE",
-            })
+            }, session_id=session_id, source=message.source)
             logger.info(
                 "Session %s resumed from WAITING_FOR_HUMAN to ACTIVE",
                 session_id,
@@ -217,7 +230,7 @@ class Dispatcher:
             "user_id": message.user_id,
             "allowed_tools_count": len(allowed_tools),
             "approval_required": approval_needed,
-        })
+        }, session_id=session_id, source=message.source)
 
         logger.info(
             "Resolved permissions for %s/%s: %d tools, approval=%s",
@@ -260,12 +273,12 @@ class Dispatcher:
                 "session_id": session_id,
                 "source": message.source,
                 "user_id": message.user_id,
-            })
+            }, session_id=session_id, source=message.source)
             self._emit("session_state_changed", {
                 "session_id": session_id,
                 "from_state": "ACTIVE",
                 "to_state": "WAITING_FOR_HUMAN",
-            })
+            }, session_id=session_id, source=message.source)
             approval_msg = (
                 "This request requires approval before it can be executed. "
                 "A human must approve this session to continue."
@@ -302,7 +315,7 @@ class Dispatcher:
         self._emit("executor_invoked", {
             "session_id": session_id,
             "agent_name": agent_name,
-        })
+        }, session_id=session_id, source=message.source)
         try:
             result: ExecutorResult = await self._executor.execute(
                 message, persona=persona_content,
@@ -316,20 +329,20 @@ class Dispatcher:
                 "session_id": session_id,
                 "error": str(exc),
                 "error_type": type(exc).__name__,
-            })
+            }, session_id=session_id, source=message.source, status="error")
             await self._session_manager.update_state(session_id, "ERROR")
             self._emit("session_state_changed", {
                 "session_id": session_id,
                 "from_state": "ACTIVE",
                 "to_state": "ERROR",
-            })
+            }, session_id=session_id, source=message.source, status="error")
             raise
 
         # 9. Executor response received
         self._emit("executor_response", {
             "session_id": session_id,
             "backend": result.backend,
-        })
+        }, session_id=session_id, source=message.source)
 
         # 10. Store response
         await self._repo.save_message(
