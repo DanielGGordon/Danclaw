@@ -28,6 +28,18 @@ Three scripts provide Obsidian vault operations. All accept `--vault` (path to v
   - Prints matching relative paths to stdout (one per line). Skips hidden directories.
   - `python -m tools.obsidian_search --vault /path/to/vault --name "*.md" --query "TODO"`
 
+### Instrumented Wrappers (`instrumented.py`)
+
+`tools.instrumented` provides telemetry-emitting wrappers around the Obsidian tool functions (`read_file`, `write_file`, `search_files`). Each wrapper accepts a `telemetry` keyword argument (a `TelemetryCollector` instance) and records a `"tool_execution"` event with payload fields:
+
+- `tool` — tool name (e.g. `"obsidian_read"`)
+- `args` — dict of arguments passed to the tool function
+- `success` — boolean indicating success or failure
+- `duration` — wall-clock seconds the call took
+- `error` — error message (only present on failure)
+
+Events are emitted on both success and failure (exceptions are re-raised after recording).
+
 ## Relationship to Other Modules
 
 - **Invoked by**: `dispatcher` (via the AI executor, on behalf of an agent)
