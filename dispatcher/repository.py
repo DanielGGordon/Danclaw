@@ -24,6 +24,7 @@ class SessionRow:
     id: str
     agent_name: str
     state: str
+    attribution: str
     created_at: str
     updated_at: str
 
@@ -83,6 +84,7 @@ class Repository:
         *,
         session_id: Optional[str] = None,
         state: str = "ACTIVE",
+        attribution: str = "bot",
     ) -> SessionRow:
         """Create a new session and return its row.
 
@@ -94,6 +96,8 @@ class Repository:
             Optional explicit ID.  A UUID4 is generated if omitted.
         state:
             Initial state (default ``"ACTIVE"``).
+        attribution:
+            Attribution label for message formatting (default ``"bot"``).
 
         Raises
         ------
@@ -109,18 +113,19 @@ class Repository:
         sid = session_id or uuid.uuid4().hex
         now = _utcnow()
         await self._db.execute(
-            "INSERT INTO sessions (id, agent_name, state, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (sid, agent_name, state, now, now),
+            "INSERT INTO sessions (id, agent_name, state, attribution, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (sid, agent_name, state, attribution, now, now),
         )
         await self._db.commit()
         return SessionRow(id=sid, agent_name=agent_name, state=state,
-                          created_at=now, updated_at=now)
+                          attribution=attribution, created_at=now,
+                          updated_at=now)
 
     async def get_session(self, session_id: str) -> Optional[SessionRow]:
         """Return a session by ID, or ``None`` if not found."""
         async with self._db.execute(
-            "SELECT id, agent_name, state, created_at, updated_at "
+            "SELECT id, agent_name, state, attribution, created_at, updated_at "
             "FROM sessions WHERE id = ?",
             (session_id,),
         ) as cur:
@@ -174,6 +179,23 @@ class Repository:
             return None
         return await self.get_session(session_id)
 
+    async def update_session_attribution(
+        self, session_id: str, attribution: str,
+    ) -> Optional[SessionRow]:
+        """Update a session's attribution label and return the updated row.
+
+        Returns ``None`` if the session does not exist.
+        """
+        now = _utcnow()
+        cursor = await self._db.execute(
+            "UPDATE sessions SET attribution = ?, updated_at = ? WHERE id = ?",
+            (attribution, now, session_id),
+        )
+        await self._db.commit()
+        if cursor.rowcount == 0:
+            return None
+        return await self.get_session(session_id)
+
     async def list_sessions(
         self, *, state: Optional[str] = None
     ) -> list[SessionRow]:
@@ -191,10 +213,10 @@ class Repository:
             )
 
         if state is None:
-            sql = "SELECT id, agent_name, state, created_at, updated_at FROM sessions ORDER BY created_at"
+            sql = "SELECT id, agent_name, state, attribution, created_at, updated_at FROM sessions ORDER BY created_at"
             params: tuple = ()
         else:
-            sql = "SELECT id, agent_name, state, created_at, updated_at FROM sessions WHERE state = ? ORDER BY created_at"
+            sql = "SELECT id, agent_name, state, attribution, created_at, updated_at FROM sessions WHERE state = ? ORDER BY created_at"
             params = (state,)
 
         async with self._db.execute(sql, params) as cur:
@@ -310,7 +332,7 @@ class Repository:
         no matching session exists.
         """
         async with self._db.execute(
-            "SELECT s.id, s.agent_name, s.state, s.created_at, s.updated_at "
+            "SELECT s.id, s.agent_name, s.state, s.attribution, s.created_at, s.updated_at "
             "FROM sessions s "
             "JOIN channel_bindings cb ON s.id = cb.session_id "
             "WHERE cb.channel_type = ? AND cb.channel_ref = ? "

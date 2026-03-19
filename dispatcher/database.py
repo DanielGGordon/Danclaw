@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     agent_name  TEXT NOT NULL,
     state       TEXT NOT NULL DEFAULT 'ACTIVE'
                     CHECK (state IN ('ACTIVE', 'WAITING_FOR_HUMAN', 'DONE', 'ERROR')),
+    attribution TEXT NOT NULL DEFAULT 'bot',
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
 );

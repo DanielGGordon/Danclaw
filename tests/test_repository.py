@@ -169,6 +169,60 @@ async def test_list_sessions_invalid_state_filter(repo):
         await repo.list_sessions(state="NOPE")
 
 
+# ── Session: attribution ──────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_create_session_default_attribution(repo):
+    session = await repo.create_session("agent")
+    assert session.attribution == "bot"
+
+
+@pytest.mark.asyncio
+async def test_create_session_custom_attribution(repo):
+    session = await repo.create_session("agent", attribution="[via terminal]")
+    assert session.attribution == "[via terminal]"
+
+
+@pytest.mark.asyncio
+async def test_get_session_includes_attribution(repo):
+    await repo.create_session("agent", session_id="s1", attribution="custom-bot")
+    fetched = await repo.get_session("s1")
+    assert fetched is not None
+    assert fetched.attribution == "custom-bot"
+
+
+@pytest.mark.asyncio
+async def test_update_session_attribution(repo):
+    await repo.create_session("agent", session_id="s1")
+    updated = await repo.update_session_attribution("s1", "[via terminal]")
+    assert updated is not None
+    assert updated.attribution == "[via terminal]"
+
+
+@pytest.mark.asyncio
+async def test_update_session_attribution_nonexistent(repo):
+    result = await repo.update_session_attribution("nonexistent", "custom")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_update_session_attribution_persists(repo):
+    await repo.create_session("agent", session_id="s1")
+    await repo.update_session_attribution("s1", "new-label")
+    fetched = await repo.get_session("s1")
+    assert fetched is not None
+    assert fetched.attribution == "new-label"
+
+
+@pytest.mark.asyncio
+async def test_list_sessions_includes_attribution(repo):
+    await repo.create_session("a", session_id="s1", attribution="bot")
+    await repo.create_session("a", session_id="s2", attribution="[via slack]")
+    sessions = await repo.list_sessions()
+    attribs = {s.id: s.attribution for s in sessions}
+    assert attribs == {"s1": "bot", "s2": "[via slack]"}
+
+
 # ── Messages: save ───────────────────────────────────────────────────
 
 @pytest.mark.asyncio

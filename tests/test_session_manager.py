@@ -373,6 +373,49 @@ async def test_update_state_noop_same_state(mgr):
     assert updated.id == s.id
 
 
+# ── get_attribution / set_attribution ─────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_default_attribution_is_bot(mgr):
+    session = await mgr.get_or_create_session(_msg(), "agent")
+    attrib = await mgr.get_attribution(session.id)
+    assert attrib == "bot"
+
+
+@pytest.mark.asyncio
+async def test_set_custom_attribution(mgr):
+    session = await mgr.get_or_create_session(_msg(), "agent")
+    updated = await mgr.set_attribution(session.id, "[via terminal]")
+    assert updated.attribution == "[via terminal]"
+
+
+@pytest.mark.asyncio
+async def test_set_attribution_persists(mgr):
+    session = await mgr.get_or_create_session(_msg(), "agent")
+    await mgr.set_attribution(session.id, "custom-bot-name")
+    attrib = await mgr.get_attribution(session.id)
+    assert attrib == "custom-bot-name"
+
+
+@pytest.mark.asyncio
+async def test_get_attribution_nonexistent_raises(mgr):
+    with pytest.raises(KeyError, match="not found"):
+        await mgr.get_attribution("nonexistent")
+
+
+@pytest.mark.asyncio
+async def test_set_attribution_nonexistent_raises(mgr):
+    with pytest.raises(KeyError, match="not found"):
+        await mgr.set_attribution("nonexistent", "custom")
+
+
+@pytest.mark.asyncio
+async def test_set_attribution_does_not_change_state(mgr):
+    session = await mgr.get_or_create_session(_msg(), "agent")
+    updated = await mgr.set_attribution(session.id, "new-label")
+    assert updated.state == "ACTIVE"
+
+
 # ── list_active_sessions ─────────────────────────────────────────────
 
 @pytest.mark.asyncio
