@@ -90,36 +90,36 @@
     },
     {
       "type": "line", "id": "human_line",
-      "x": 110, "y": 97, "width": 0, "height": 560,
+      "x": 110, "y": 97, "width": 0, "height": 475,
       "strokeColor": "#c2410c", "backgroundColor": "transparent",
       "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "dashed",
       "roughness": 0, "opacity": 100, "angle": 0,
       "seed": 200001, "version": 1, "versionNonce": 200002,
       "isDeleted": false, "groupIds": [], "boundElements": null,
       "link": null, "locked": false,
-      "points": [[0, 0], [0, 560]]
+      "points": [[0, 0], [0, 475]]
     },
     {
       "type": "line", "id": "dispatcher_line",
-      "x": 350, "y": 97, "width": 0, "height": 560,
+      "x": 350, "y": 97, "width": 0, "height": 475,
       "strokeColor": "#6d28d9", "backgroundColor": "transparent",
       "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "dashed",
       "roughness": 0, "opacity": 100, "angle": 0,
       "seed": 200003, "version": 1, "versionNonce": 200004,
       "isDeleted": false, "groupIds": [], "boundElements": null,
       "link": null, "locked": false,
-      "points": [[0, 0], [0, 560]]
+      "points": [[0, 0], [0, 475]]
     },
     {
       "type": "line", "id": "agent_line",
-      "x": 590, "y": 97, "width": 0, "height": 560,
+      "x": 590, "y": 97, "width": 0, "height": 475,
       "strokeColor": "#047857", "backgroundColor": "transparent",
       "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "dashed",
       "roughness": 0, "opacity": 100, "angle": 0,
       "seed": 200005, "version": 1, "versionNonce": 200006,
       "isDeleted": false, "groupIds": [], "boundElements": null,
       "link": null, "locked": false,
-      "points": [[0, 0], [0, 560]]
+      "points": [[0, 0], [0, 475]]
     },
     {
       "type": "arrow", "id": "msg1_add_dark",
