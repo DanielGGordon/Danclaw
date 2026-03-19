@@ -14,6 +14,10 @@ danclaw/
 ├── pyproject.toml            # Project metadata and dependencies
 ├── Dockerfile                # Container image for the dispatcher service
 ├── docker-compose.yml        # Multi-service orchestration with SQLite volume and .env
+├── logging_config/
+│   ├── __init__.py           # Re-exports setup_logging
+│   ├── setup.py              # JSONFormatter and setup_logging: structured JSON logging for all components
+│   └── README.md             # Module documentation
 ├── cli/
 │   ├── __init__.py           # Python package marker
 │   ├── agent.py              # CLI entry point: `agent chat`, `agent list`, and `agent attach` subcommands over Unix socket
@@ -64,6 +68,7 @@ danclaw/
 
 ## Module Descriptions
 
+- **logging_config/**: Shared structured JSON logging configuration. Provides `setup_logging()` which configures the root logger to emit single-line JSON objects (with `timestamp`, `level`, `logger`, `message`, and optional context fields) to stderr. Used by all entry points (dispatcher, Slack listener, CLI).
 - **cli/**: Command-line interface. `agent chat` starts an interactive session over the dispatcher's Unix domain socket. `agent list` displays all sessions in a formatted table. `agent attach <session-id>` attaches to an existing session, displays its history, then enters a chat loop.
 - **config/**: Configuration loading and validation. Reads JSON config defining agents (name, persona, backend_preference, allowed_tools), listeners, and permissions (per-channel tools/override, per-user additional tools).
 - **dispatcher/**: Core message routing, session management, permission checks, AI executor invocation.

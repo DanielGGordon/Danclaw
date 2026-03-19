@@ -14,6 +14,7 @@ import logging
 import signal
 import sys
 
+from logging_config import setup_logging
 from listeners.slack.listener import SlackListener
 
 DEFAULT_SOCKET_PATH = "/tmp/danclaw-dispatcher.sock"
@@ -37,10 +38,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    logging.basicConfig(
-        level=getattr(logging, args.log_level),
-        format="%(asctime)s %(name)s %(levelname)s %(message)s",
-    )
+    setup_logging(level=args.log_level)
 
     listener = SlackListener(socket_path=args.socket_path)
 

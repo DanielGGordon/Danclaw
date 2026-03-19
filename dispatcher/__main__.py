@@ -20,6 +20,7 @@ from pathlib import Path
 import aiosqlite
 
 from config import load_config, ConfigError
+from logging_config import setup_logging
 from dispatcher.database import init_db
 from dispatcher.dispatcher import Dispatcher
 from dispatcher.executor import MockExecutor
@@ -38,12 +39,8 @@ DEFAULT_DB_PATH = os.environ.get(
 
 
 def _setup_logging() -> None:
-    """Configure root logging with a consistent format."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        stream=sys.stderr,
-    )
+    """Configure root logging with structured JSON output."""
+    setup_logging()
 
 
 async def _run(
