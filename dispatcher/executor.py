@@ -250,6 +250,10 @@ _BACKEND_REGISTRY: dict[str, type] = {
     "mock": MockExecutor,
 }
 
+_CLASS_TO_BACKEND: dict[str, str] = {
+    cls.__name__: name for name, cls in _BACKEND_REGISTRY.items()
+}
+
 
 def build_executor(
     backend_preference: list[str],
@@ -407,13 +411,19 @@ class FallbackExecutor:
                 if idx > 0:
                     # A fallback executor succeeded
                     if self._telemetry is not None:
-                        self._telemetry.record(
-                            "fallback",
-                            {
-                                "failed_backends": failed_backends,
-                                "succeeded_backend": result.backend,
-                            },
-                        )
+                        try:
+                            self._telemetry.record(
+                                "fallback",
+                                {
+                                    "failed_backends": failed_backends,
+                                    "succeeded_backend": result.backend,
+                                },
+                            )
+                        except Exception:
+                            logger.warning(
+                                "Telemetry recording failed",
+                                exc_info=True,
+                            )
                     note = self._resolve_notification()
                     if note is not None:
                         if self._notification_callback is not None:
@@ -424,14 +434,7 @@ class FallbackExecutor:
                         )
                 return result
             except Exception as exc:
-                # Determine backend name from the executor class
                 backend_label = type(executor).__name__
-                # Use well-known mappings for cleaner labels
-                _CLASS_TO_BACKEND = {
-                    "ClaudeExecutor": "claude",
-                    "CodexExecutor": "codex",
-                    "MockExecutor": "mock",
-                }
                 failed_backends.append(
                     _CLASS_TO_BACKEND.get(backend_label, backend_label)
                 )
