@@ -56,12 +56,16 @@ class DispatchResult:
         response: The executor's response text.
         backend: Name of the backend that produced the response.
         agent_name: Name of the agent that handled the message.
+        fanout_channels: Channel refs bound to the session, excluding the
+            source channel.  Listeners use this list to deliver the
+            response to other channels that are following the session.
     """
 
     session_id: str
     response: str
     backend: str
     agent_name: str
+    fanout_channels: tuple[str, ...] = ()
 
 
 class Dispatcher:
@@ -108,6 +112,16 @@ class Dispatcher:
         self._config = config
         self._personas_dir = personas_dir
         self._last_resolved_permissions: frozenset[str] = frozenset()
+
+    async def _fanout_channels(
+        self, session_id: str, source_channel_ref: str,
+    ) -> tuple[str, ...]:
+        """Return channel refs bound to *session_id*, excluding *source_channel_ref*."""
+        bindings = await self._session_manager.get_bindings(session_id)
+        return tuple(
+            b.channel_ref for b in bindings
+            if b.channel_ref != source_channel_ref
+        )
 
     async def dispatch(self, message: StandardMessage) -> DispatchResult:
         """Route *message* through the full pipeline.
@@ -226,11 +240,15 @@ class Dispatcher:
                 "Session %s set to WAITING_FOR_HUMAN (approval required)",
                 session_id,
             )
+            fanout = await self._fanout_channels(
+                session_id, message.channel_ref,
+            )
             return DispatchResult(
                 session_id=session_id,
                 response=approval_msg,
                 backend="system",
                 agent_name=agent_name,
+                fanout_channels=fanout,
             )
 
         logger.info(
@@ -266,12 +284,14 @@ class Dispatcher:
             session_id, result.backend,
         )
 
-        # 9. Return result
+        # 9. Gather fanout channels and return result
+        fanout = await self._fanout_channels(session_id, message.channel_ref)
         return DispatchResult(
             session_id=session_id,
             response=result.content,
             backend=result.backend,
             agent_name=agent_name,
+            fanout_channels=fanout,
         )
 
     async def _handle_switch(
@@ -313,11 +333,15 @@ class Dispatcher:
                 user_id="system",
             )
             session = await self._session_manager.get_session(session_id)
+            fanout = await self._fanout_channels(
+                session_id, message.channel_ref,
+            )
             return DispatchResult(
                 session_id=session_id,
                 response=error_msg,
                 backend="system",
                 agent_name=session.agent_name,
+                fanout_channels=fanout,
             )
 
         # Update session agent
@@ -342,9 +366,13 @@ class Dispatcher:
             channel_ref=message.channel_ref,
             user_id="system",
         )
+        fanout = await self._fanout_channels(
+            session_id, message.channel_ref,
+        )
         return DispatchResult(
             session_id=session_id,
             response=confirm_msg,
             backend="system",
             agent_name=target_agent.name,
+            fanout_channels=fanout,
         )

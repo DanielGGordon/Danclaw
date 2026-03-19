@@ -971,3 +971,79 @@ async def test_waiting_for_human_manual_state_also_resumes(mgr, repo, personas_d
     assert r2.session_id == r1.session_id
     assert r2.response == "mock response: my answer"
     assert (await mgr.get_session(r1.session_id)).state == "ACTIVE"
+
+
+# ── Fanout channels ──────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_dispatch_result_has_fanout_channels_field(dispatcher):
+    """DispatchResult includes a fanout_channels tuple."""
+    result = await dispatcher.dispatch(_msg())
+    assert hasattr(result, "fanout_channels")
+    assert isinstance(result.fanout_channels, tuple)
+
+
+@pytest.mark.asyncio
+async def test_dispatch_result_fanout_empty_for_single_channel(dispatcher):
+    """When only one channel is bound, fanout_channels is empty."""
+    result = await dispatcher.dispatch(_msg(channel_ref="tty1"))
+    assert result.fanout_channels == ()
+
+
+@pytest.mark.asyncio
+async def test_dispatch_result_fanout_excludes_source_channel(dispatcher, mgr):
+    """fanout_channels should not include the source channel."""
+    # First dispatch creates a session bound to tty1
+    r1 = await dispatcher.dispatch(_msg(channel_ref="tty1"))
+    # Bind a second channel (e.g. Slack thread)
+    await mgr.add_binding(r1.session_id, "slack", "C123-ts456")
+    # Dispatch again from tty1 — fanout should include slack but not tty1
+    r2 = await dispatcher.dispatch(_msg(channel_ref="tty1"))
+    assert r2.session_id == r1.session_id
+    assert "C123-ts456" in r2.fanout_channels
+    assert "tty1" not in r2.fanout_channels
+
+
+@pytest.mark.asyncio
+async def test_dispatch_result_fanout_multiple_bindings(dispatcher, mgr):
+    """Multiple bound channels appear in fanout_channels."""
+    r1 = await dispatcher.dispatch(_msg(channel_ref="tty1"))
+    await mgr.add_binding(r1.session_id, "slack", "C123-ts456")
+    await mgr.add_binding(r1.session_id, "slack", "C789-ts012")
+    r2 = await dispatcher.dispatch(_msg(channel_ref="tty1"))
+    assert set(r2.fanout_channels) == {"C123-ts456", "C789-ts012"}
+
+
+@pytest.mark.asyncio
+async def test_dispatch_result_fanout_from_slack_excludes_slack(
+    dispatcher, mgr,
+):
+    """When dispatching from Slack, the Slack channel is excluded."""
+    # Create session from terminal
+    r1 = await dispatcher.dispatch(_msg(channel_ref="tty1"))
+    await mgr.add_binding(r1.session_id, "slack", "C123-ts456")
+    # Now dispatch from the Slack channel using session_id
+    slack_msg = _msg(
+        source="slack",
+        channel_ref="C123-ts456",
+        content="from slack",
+        session_id=r1.session_id,
+    )
+    r2 = await dispatcher.dispatch(slack_msg)
+    assert r2.session_id == r1.session_id
+    assert "tty1" in r2.fanout_channels
+    assert "C123-ts456" not in r2.fanout_channels
+
+
+@pytest.mark.asyncio
+async def test_dispatch_result_fanout_on_switch_command(dispatcher, mgr):
+    """fanout_channels are populated even for switch command responses."""
+    r1 = await dispatcher.dispatch(_msg(channel_ref="tty1"))
+    await mgr.add_binding(r1.session_id, "slack", "C123-ts456")
+    switch_msg = _msg(
+        channel_ref="tty1",
+        content="/switch test-agent",
+        session_id=r1.session_id,
+    )
+    r2 = await dispatcher.dispatch(switch_msg)
+    assert "C123-ts456" in r2.fanout_channels

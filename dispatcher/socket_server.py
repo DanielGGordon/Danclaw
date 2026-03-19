@@ -13,7 +13,8 @@ types are supported:
    ``channel_ref``, ``user_id``, and ``content`` fields (as defined by
    :class:`StandardMessage`).  Response::
 
-       {"ok": true, "session_id": "...", "response": "...", "backend": "..."}
+       {"ok": true, "session_id": "...", "response": "...", "backend": "...",
+        "fanout_channels": ["..."]}
 
 2. **List sessions** — ``{"type": "list_sessions"}``  Response::
 
@@ -169,6 +170,7 @@ class SocketServer:
             "response": result.response,
             "backend": result.backend,
             "agent_name": result.agent_name,
+            "fanout_channels": list(result.fanout_channels),
         })
 
     async def _handle_get_history(self, session_id: str) -> str:
