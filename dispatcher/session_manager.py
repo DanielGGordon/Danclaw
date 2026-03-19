@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+import aiosqlite
+
 from dispatcher.models import StandardMessage
 from dispatcher.repository import (
     ChannelBindingRow,
@@ -114,7 +116,7 @@ class SessionManager:
             await self._repo.add_channel_binding(
                 session_id, channel_type, channel_ref,
             )
-        except Exception:
+        except aiosqlite.IntegrityError:
             # Binding already exists — nothing to do.
             pass
 
