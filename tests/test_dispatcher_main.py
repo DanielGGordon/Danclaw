@@ -32,7 +32,7 @@ def _write_config(tmp_path: Path, agents: list[dict] | None = None) -> Path:
 
     if agents is None:
         agents = [
-            {"name": "alpha", "persona": "default", "backend_preference": ["claude"]}
+            {"name": "alpha", "persona": "default", "backend_preference": ["mock"]}
         ]
 
     # Ensure every referenced persona file exists.

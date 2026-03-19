@@ -22,7 +22,6 @@ import aiosqlite
 from config import load_config, ConfigError
 from dispatcher.database import init_db
 from dispatcher.dispatcher import Dispatcher
-from dispatcher.executor import build_executor
 from dispatcher.repository import Repository
 from dispatcher.session_manager import SessionManager
 from dispatcher.socket_server import SocketServer
@@ -89,11 +88,7 @@ async def _run(
         # Wire up components
         repo = Repository(db)
         session_manager = SessionManager(repo)
-        agent = config.default_agent
-        executor = build_executor(
-            agent.backend_preference, timeout=agent.timeout,
-        )
-        dispatcher = Dispatcher(session_manager, repo, executor, config=config)
+        dispatcher = Dispatcher(session_manager, repo, None, config=config)
         server = SocketServer(dispatcher, socket_path)
 
         # Start the socket server

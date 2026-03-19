@@ -17,8 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from config import DanClawConfig
-from dispatcher.executor import Executor, ExecutorResult
+from config import AgentConfig, DanClawConfig
+from dispatcher.executor import Executor, ExecutorResult, build_executor
 from dispatcher.models import StandardMessage
 from dispatcher.permissions import resolve_permissions, requires_approval
 from dispatcher.repository import Repository
@@ -97,7 +97,7 @@ class Dispatcher:
         self,
         session_manager: SessionManager,
         repo: Repository,
-        executor: Executor,
+        executor: Executor | None,
         config: DanClawConfig,
         *,
         personas_dir: str | Path | None = None,
@@ -108,6 +108,26 @@ class Dispatcher:
         self._config = config
         self._personas_dir = personas_dir
         self._last_resolved_permissions: frozenset[str] = frozenset()
+        self._executor_cache: dict[str, Executor] = {}
+
+    def _get_executor_for_agent(self, agent: AgentConfig) -> Executor:
+        """Return an executor for *agent*, building and caching if needed."""
+        if agent.name not in self._executor_cache:
+            self._executor_cache[agent.name] = build_executor(
+                agent.backend_preference, timeout=agent.timeout,
+            )
+        return self._executor_cache[agent.name]
+
+    def _resolve_executor(self, agent: AgentConfig) -> Executor:
+        """Return the executor to use for *agent*.
+
+        If an explicit executor was provided at construction time (e.g. in
+        tests), it is always returned.  Otherwise an executor is built from
+        the agent's configuration.
+        """
+        if self._executor is not None:
+            return self._executor
+        return self._get_executor_for_agent(agent)
 
     async def dispatch(self, message: StandardMessage) -> DispatchResult:
         """Route *message* through the full pipeline.
@@ -225,8 +245,9 @@ class Dispatcher:
         )
 
         # 7. Execute
+        executor = self._resolve_executor(agent)
         try:
-            result: ExecutorResult = await self._executor.execute(
+            result: ExecutorResult = await executor.execute(
                 message, persona=persona_content,
                 allowed_tools=allowed_tools,
             )
