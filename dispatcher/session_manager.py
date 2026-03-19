@@ -146,7 +146,8 @@ class SessionManager:
         updated = await self._repo.update_session_state(session_id, new_state)
         # update_session_state returns None only if the row vanished between
         # the get and the update — extremely unlikely but handle defensively.
-        assert updated is not None, "session disappeared during update"
+        if updated is None:
+            raise RuntimeError("session disappeared during update")
         return updated
 
     async def list_active_sessions(self) -> list[SessionRow]:
