@@ -203,7 +203,7 @@ The first real tool: read and write files in an Obsidian vault. Registered per-a
 - [x] Permission-gated: a user without Obsidian tool access cannot trigger it
 - [x] End-to-end: Slack message → agent reads an Obsidian note → responds with content in Slack thread
 - [x] End-to-end: Slack message → agent creates/updates an Obsidian note → confirms in Slack thread
-- [ ] Tool execution emits telemetry events
+- [x] Tool execution emits telemetry events
 
 ---
 
