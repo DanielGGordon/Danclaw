@@ -137,7 +137,7 @@ Replace the mocked executor with real `claude -p` and `codex` invocations. The e
 ### Acceptance criteria
 
 - [x] Executor calls `claude -p --resume <session-id>` with the agent's persona as system prompt
-- [ ] Executor calls `codex` as fallback when claude fails (timeout, non-zero exit, credit error)
+- [x] Executor calls `codex` as fallback when claude fails (timeout, non-zero exit, credit error)
 - [ ] Backend preference order read from agent config (default: `["claude", "codex"]`)
 - [ ] Timeout configurable per agent
 - [ ] Fallback notification: configurable per persona — silent, notify user, or custom message

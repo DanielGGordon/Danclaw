@@ -6,7 +6,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from dispatcher.executor import ClaudeExecutor, ExecutorResult, MockExecutor
+from dispatcher.executor import (
+    ClaudeExecutor,
+    CodexExecutor,
+    ExecutorResult,
+    FallbackExecutor,
+    MockExecutor,
+)
 from dispatcher.models import StandardMessage
 
 
@@ -290,3 +296,173 @@ class TestProtocol:
 
         executor: Executor = ClaudeExecutor()
         assert hasattr(executor, "execute")
+
+    def test_codex_executor_satisfies_protocol(self):
+        """CodexExecutor must be structurally compatible with the Executor
+        protocol (duck-typed — no explicit subclass needed)."""
+        from dispatcher.executor import Executor
+
+        executor: Executor = CodexExecutor()
+        assert hasattr(executor, "execute")
+
+    def test_fallback_executor_satisfies_protocol(self):
+        """FallbackExecutor must be structurally compatible with the Executor
+        protocol (duck-typed — no explicit subclass needed)."""
+        from dispatcher.executor import Executor
+
+        executor: Executor = FallbackExecutor([MockExecutor()])
+        assert hasattr(executor, "execute")
+
+
+# ── CodexExecutor tests ─────────────────────────────────────────────
+
+class TestCodexExecutorCommand:
+    @pytest.mark.asyncio
+    @patch("dispatcher.executor.asyncio.create_subprocess_exec")
+    async def test_basic_command_construction(self, mock_exec):
+        proc = _make_proc_mock(stdout=b"Hello from Codex")
+        mock_exec.return_value = proc
+
+        executor = CodexExecutor()
+        msg = _make_message("What is 2+2?")
+        result = await executor.execute(msg)
+
+        mock_exec.assert_called_once()
+        args = mock_exec.call_args[0]
+        assert args[0] == "codex"
+        assert args[1] == "-q"
+        assert args[2] == "What is 2+2?"
+
+    @pytest.mark.asyncio
+    @patch("dispatcher.executor.asyncio.create_subprocess_exec")
+    async def test_custom_binary(self, mock_exec):
+        proc = _make_proc_mock(stdout=b"ok")
+        mock_exec.return_value = proc
+
+        executor = CodexExecutor(codex_bin="/usr/local/bin/codex")
+        await executor.execute(_make_message("hi"))
+
+        args = mock_exec.call_args[0]
+        assert args[0] == "/usr/local/bin/codex"
+
+    @pytest.mark.asyncio
+    @patch("dispatcher.executor.asyncio.create_subprocess_exec")
+    async def test_no_resume_or_system_prompt_flags(self, mock_exec):
+        proc = _make_proc_mock(stdout=b"ok")
+        mock_exec.return_value = proc
+
+        executor = CodexExecutor()
+        msg = StandardMessage(
+            source="terminal", channel_ref="ref", user_id="u1",
+            content="hi", session_id="sess-abc",
+        )
+        await executor.execute(msg, persona="You are helpful.")
+
+        args = mock_exec.call_args[0]
+        assert "--resume" not in args
+        assert "--system-prompt" not in args
+
+
+class TestCodexExecutorOutput:
+    @pytest.mark.asyncio
+    @patch("dispatcher.executor.asyncio.create_subprocess_exec")
+    async def test_stdout_captured_as_content(self, mock_exec):
+        proc = _make_proc_mock(stdout=b"The answer is 4.\n")
+        mock_exec.return_value = proc
+
+        executor = CodexExecutor()
+        result = await executor.execute(_make_message("2+2"))
+
+        assert result.content == "The answer is 4."
+        assert result.backend == "codex"
+
+    @pytest.mark.asyncio
+    @patch("dispatcher.executor.asyncio.create_subprocess_exec")
+    async def test_nonzero_exit_raises_runtime_error(self, mock_exec):
+        proc = _make_proc_mock(returncode=1, stderr=b"something broke")
+        mock_exec.return_value = proc
+
+        executor = CodexExecutor()
+        with pytest.raises(RuntimeError, match="codex exited with code 1"):
+            await executor.execute(_make_message("fail"))
+
+    @pytest.mark.asyncio
+    @patch("dispatcher.executor.asyncio.create_subprocess_exec")
+    async def test_nonzero_exit_includes_stderr(self, mock_exec):
+        proc = _make_proc_mock(returncode=2, stderr=b"detailed error msg")
+        mock_exec.return_value = proc
+
+        executor = CodexExecutor()
+        with pytest.raises(RuntimeError, match="detailed error msg"):
+            await executor.execute(_make_message("fail"))
+
+
+# ── FallbackExecutor tests ──────────────────────────────────────────
+
+class TestFallbackExecutorInit:
+    def test_requires_at_least_one_executor(self):
+        with pytest.raises(ValueError, match="at least one"):
+            FallbackExecutor([])
+
+
+class TestFallbackExecutorSuccess:
+    @pytest.mark.asyncio
+    async def test_returns_first_executor_result_on_success(self):
+        executor = FallbackExecutor([
+            MockExecutor(fixed_response="first"),
+            MockExecutor(fixed_response="second"),
+        ])
+        result = await executor.execute(_make_message("hi"))
+        assert result.content == "first"
+        assert result.backend == "mock"
+
+
+class TestFallbackExecutorFallback:
+    @pytest.mark.asyncio
+    async def test_falls_back_to_second_on_first_failure(self):
+        failing = MockExecutor()
+        # Monkey-patch execute to raise
+        async def _raise(*a, **kw):
+            raise RuntimeError("primary failed")
+        failing.execute = _raise
+
+        backup = MockExecutor(fixed_response="backup response")
+
+        executor = FallbackExecutor([failing, backup])
+        result = await executor.execute(_make_message("hi"))
+        assert result.content == "backup response"
+
+    @pytest.mark.asyncio
+    async def test_passes_persona_and_tools_to_fallback(self):
+        failing = MockExecutor()
+        async def _raise(*a, **kw):
+            raise RuntimeError("primary failed")
+        failing.execute = _raise
+
+        backup = MockExecutor(fixed_response="ok")
+
+        executor = FallbackExecutor([failing, backup])
+        tools = frozenset(["tool_a"])
+        await executor.execute(
+            _make_message("hi"), persona="Be nice.", allowed_tools=tools,
+        )
+        assert backup.last_persona == "Be nice."
+        assert backup.last_allowed_tools == tools
+
+
+class TestFallbackExecutorAllFail:
+    @pytest.mark.asyncio
+    async def test_raises_last_exception_when_all_fail(self):
+        fail1 = MockExecutor()
+        async def _raise1(*a, **kw):
+            raise RuntimeError("first failed")
+        fail1.execute = _raise1
+
+        fail2 = MockExecutor()
+        async def _raise2(*a, **kw):
+            raise ValueError("second failed")
+        fail2.execute = _raise2
+
+        executor = FallbackExecutor([fail1, fail2])
+        with pytest.raises(ValueError, match="second failed"):
+            await executor.execute(_make_message("hi"))
