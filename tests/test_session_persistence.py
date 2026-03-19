@@ -21,6 +21,7 @@ from dispatcher.executor import MockExecutor
 from dispatcher.models import StandardMessage
 from dispatcher.repository import Repository
 from dispatcher.session_manager import SessionManager
+from tests.conftest import make_config
 
 
 def _msg(
@@ -60,7 +61,7 @@ async def test_sessions_persist_with_various_states():
         repo1 = Repository(conn1)
         mgr1 = SessionManager(repo1)
         executor1 = MockExecutor()
-        dispatcher1 = Dispatcher(mgr1, repo1, executor1, agent_name="bot")
+        dispatcher1 = Dispatcher(mgr1, repo1, executor1, config=make_config("bot"))
 
         # Create four sessions on different channels so each gets its own session
         r_active = await dispatcher1.dispatch(
@@ -157,7 +158,7 @@ async def test_active_session_resumes_after_restart():
         conn1 = await _init_db(db_path)
         repo1 = Repository(conn1)
         mgr1 = SessionManager(repo1)
-        dispatcher1 = Dispatcher(mgr1, repo1, MockExecutor(), agent_name="bot")
+        dispatcher1 = Dispatcher(mgr1, repo1, MockExecutor(), config=make_config("bot"))
 
         r1 = await dispatcher1.dispatch(
             _msg(channel_ref="resume-chan", content="first message"),
@@ -179,7 +180,7 @@ async def test_active_session_resumes_after_restart():
         conn2 = await _init_db(db_path)
         repo2 = Repository(conn2)
         mgr2 = SessionManager(repo2)
-        dispatcher2 = Dispatcher(mgr2, repo2, MockExecutor(), agent_name="bot")
+        dispatcher2 = Dispatcher(mgr2, repo2, MockExecutor(), config=make_config("bot"))
 
         # Dispatch a follow-up on the same channel — should reuse session
         r3 = await dispatcher2.dispatch(
@@ -225,7 +226,7 @@ async def test_resume_with_explicit_session_id_after_restart():
         conn1 = await _init_db(db_path)
         repo1 = Repository(conn1)
         mgr1 = SessionManager(repo1)
-        dispatcher1 = Dispatcher(mgr1, repo1, MockExecutor(), agent_name="bot")
+        dispatcher1 = Dispatcher(mgr1, repo1, MockExecutor(), config=make_config("bot"))
 
         r1 = await dispatcher1.dispatch(
             _msg(channel_ref="explicit-chan", content="initial"),
@@ -239,7 +240,7 @@ async def test_resume_with_explicit_session_id_after_restart():
         conn2 = await _init_db(db_path)
         repo2 = Repository(conn2)
         mgr2 = SessionManager(repo2)
-        dispatcher2 = Dispatcher(mgr2, repo2, MockExecutor(), agent_name="bot")
+        dispatcher2 = Dispatcher(mgr2, repo2, MockExecutor(), config=make_config("bot"))
 
         r2 = await dispatcher2.dispatch(
             _msg(
@@ -268,7 +269,7 @@ async def test_waiting_for_human_session_resumes_after_restart():
         conn1 = await _init_db(db_path)
         repo1 = Repository(conn1)
         mgr1 = SessionManager(repo1)
-        dispatcher1 = Dispatcher(mgr1, repo1, MockExecutor(), agent_name="bot")
+        dispatcher1 = Dispatcher(mgr1, repo1, MockExecutor(), config=make_config("bot"))
 
         r1 = await dispatcher1.dispatch(
             _msg(channel_ref="wait-chan", content="ask a question"),
@@ -283,7 +284,7 @@ async def test_waiting_for_human_session_resumes_after_restart():
         conn2 = await _init_db(db_path)
         repo2 = Repository(conn2)
         mgr2 = SessionManager(repo2)
-        dispatcher2 = Dispatcher(mgr2, repo2, MockExecutor(), agent_name="bot")
+        dispatcher2 = Dispatcher(mgr2, repo2, MockExecutor(), config=make_config("bot"))
 
         # Channel binding lookup should find the WAITING_FOR_HUMAN session
         r2 = await dispatcher2.dispatch(
@@ -309,7 +310,7 @@ async def test_done_session_not_reused_after_restart():
         conn1 = await _init_db(db_path)
         repo1 = Repository(conn1)
         mgr1 = SessionManager(repo1)
-        dispatcher1 = Dispatcher(mgr1, repo1, MockExecutor(), agent_name="bot")
+        dispatcher1 = Dispatcher(mgr1, repo1, MockExecutor(), config=make_config("bot"))
 
         r1 = await dispatcher1.dispatch(
             _msg(channel_ref="done-chan", content="goodbye"),
@@ -324,7 +325,7 @@ async def test_done_session_not_reused_after_restart():
         conn2 = await _init_db(db_path)
         repo2 = Repository(conn2)
         mgr2 = SessionManager(repo2)
-        dispatcher2 = Dispatcher(mgr2, repo2, MockExecutor(), agent_name="bot")
+        dispatcher2 = Dispatcher(mgr2, repo2, MockExecutor(), config=make_config("bot"))
 
         r2 = await dispatcher2.dispatch(
             _msg(channel_ref="done-chan", content="new conversation"),

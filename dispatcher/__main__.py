@@ -90,8 +90,7 @@ async def _run(
         repo = Repository(db)
         session_manager = SessionManager(repo)
         executor = MockExecutor()
-        agent_name = config.agents[0].name if config.agents else "default"
-        dispatcher = Dispatcher(session_manager, repo, executor, agent_name=agent_name)
+        dispatcher = Dispatcher(session_manager, repo, executor, config=config)
         server = SocketServer(dispatcher, socket_path)
 
         # Start the socket server

@@ -46,6 +46,7 @@ danclaw/
 │   ├── __init__.py           # Python package marker
 │   └── README.md             # Module documentation
 └── tests/                    # Test suite
+    └── conftest.py           # Shared test helpers (make_config)
 ```
 
 ## Module Descriptions

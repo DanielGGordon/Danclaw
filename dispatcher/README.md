@@ -16,15 +16,15 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
   - `get_session(session_id)` — retrieves a session by ID
   - `update_state(session_id, new_state)` — transitions session state with validation of allowed transitions
   - `list_active_sessions()` — returns all ACTIVE and WAITING_FOR_HUMAN sessions
-- `Dispatcher(session_manager, repo, executor, agent_name="default")` — core routing class that accepts a `StandardMessage` and runs the full pipeline:
-  - `dispatch(message) -> DispatchResult` — finds or creates a session, stores the inbound message, calls the executor, stores the response, and returns a `DispatchResult`.
+- `Dispatcher(session_manager, repo, executor, config)` — core routing class that accepts a `StandardMessage` and runs the full pipeline. Uses the loaded `DanClawConfig` to resolve which agent handles the message (currently selects the default/first agent; per-channel routing is planned for later):
+  - `dispatch(message) -> DispatchResult` — resolves the agent from config, finds or creates a session, stores the inbound message, calls the executor, stores the response, and returns a `DispatchResult`.
   - On executor failure, sets session state to `ERROR` and re-raises the exception.
-- `DispatchResult` — frozen dataclass with `session_id`, `response` (text), and `backend` (name of the backend that produced it).
+- `DispatchResult` — frozen dataclass with `session_id`, `response` (text), `backend` (name of the backend that produced it), and `agent_name` (name of the agent that handled the message).
 - `Executor` — protocol (typing.Protocol) defining the async `execute(message) -> ExecutorResult` interface that all executor implementations must satisfy.
 - `ExecutorResult` — frozen dataclass with `content` (response text) and `backend` (name of the backend that produced it).
 - `MockExecutor(fixed_response=None)` — executor that returns canned responses. Echoes input by default (`"mock response: <content>"`); returns a fixed string when `fixed_response` is provided.
 - `SocketServer(dispatcher, socket_path)` — asyncio Unix domain socket server that fronts the Dispatcher. Accepts newline-delimited JSON and writes back JSON responses. Supports two request types:
-  - **StandardMessage dispatch** — JSON with `source`, `channel_ref`, `user_id`, `content`. Response: `{"ok": true, "session_id": "...", "response": "...", "backend": "..."}`
+  - **StandardMessage dispatch** — JSON with `source`, `channel_ref`, `user_id`, `content`. Response: `{"ok": true, "session_id": "...", "response": "...", "backend": "...", "agent_name": "..."}`
   - **list_sessions** — `{"type": "list_sessions"}`. Response: `{"ok": true, "sessions": [{"id": "...", "agent_name": "...", "state": "...", "created_at": "..."}]}`
   - **get_history** — `{"type": "get_history", "session_id": "..."}`. Response: `{"ok": true, "session_id": "...", "messages": [{"role": "...", "content": "...", "source": "...", "user_id": "...", "created_at": "..."}]}`
   - Error response (any type): `{"ok": false, "error": "..."}`

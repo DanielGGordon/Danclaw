@@ -168,6 +168,7 @@ class SocketServer:
             "session_id": result.session_id,
             "response": result.response,
             "backend": result.backend,
+            "agent_name": result.agent_name,
         })
 
     async def _handle_get_history(self, session_id: str) -> str:
