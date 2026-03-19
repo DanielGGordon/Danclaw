@@ -73,7 +73,8 @@ def test_load_persona_none_name(personas_dir):
 def test_load_persona_default_dir():
     """Load the actual default persona from the project's personas/ directory."""
     content = load_persona("default")
-    assert "default" in content.lower() or len(content) > 0
+    assert len(content) > 0
+    assert "default" in content.lower()
 
 
 # ── Integration with real project file ─────────────────────────────────
