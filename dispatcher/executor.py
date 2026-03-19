@@ -31,8 +31,23 @@ class ExecutorResult:
 class Executor(Protocol):
     """Protocol that all executor implementations must satisfy."""
 
-    async def execute(self, message: StandardMessage) -> ExecutorResult:
-        """Process *message* and return an ExecutorResult."""
+    async def execute(
+        self,
+        message: StandardMessage,
+        *,
+        persona: str | None = None,
+    ) -> ExecutorResult:
+        """Process *message* and return an ExecutorResult.
+
+        Parameters
+        ----------
+        message:
+            The incoming message to process.
+        persona:
+            Optional persona content (markdown) to guide the executor's
+            behaviour.  Loaded from the agent's persona file by the
+            dispatcher before calling execute.
+        """
         ...  # pragma: no cover
 
 
@@ -43,6 +58,9 @@ class MockExecutor:
     ``"mock response: "``.  A custom fixed response can be supplied at
     construction time instead.
 
+    The most recently received persona is stored in :attr:`last_persona`
+    so tests can verify it was passed through correctly.
+
     Parameters:
         fixed_response: If provided, every call returns this exact string
             instead of echoing the input.
@@ -50,9 +68,16 @@ class MockExecutor:
 
     def __init__(self, fixed_response: str | None = None) -> None:
         self._fixed_response = fixed_response
+        self.last_persona: str | None = None
 
-    async def execute(self, message: StandardMessage) -> ExecutorResult:
+    async def execute(
+        self,
+        message: StandardMessage,
+        *,
+        persona: str | None = None,
+    ) -> ExecutorResult:
         """Return a canned response for *message*."""
+        self.last_persona = persona
         if self._fixed_response is not None:
             content = self._fixed_response
         else:

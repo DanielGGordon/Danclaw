@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 from config import DanClawConfig
@@ -21,6 +22,7 @@ from dispatcher.executor import Executor, ExecutorResult
 from dispatcher.models import StandardMessage
 from dispatcher.repository import Repository
 from dispatcher.session_manager import SessionManager
+from personas import load_persona, PersonaError
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +68,9 @@ class Dispatcher:
         The AI executor implementation to use.
     config:
         The loaded :class:`DanClawConfig` used to resolve agents.
+    personas_dir:
+        Directory containing persona markdown files.  Defaults to the
+        ``personas/`` package directory.
     """
 
     def __init__(
@@ -74,11 +79,14 @@ class Dispatcher:
         repo: Repository,
         executor: Executor,
         config: DanClawConfig,
+        *,
+        personas_dir: str | Path | None = None,
     ) -> None:
         self._session_manager = session_manager
         self._repo = repo
         self._executor = executor
         self._config = config
+        self._personas_dir = personas_dir
 
     async def dispatch(self, message: StandardMessage) -> DispatchResult:
         """Route *message* through the full pipeline.
@@ -103,6 +111,20 @@ class Dispatcher:
         agent = self._config.default_agent
         agent_name = agent.name
 
+        # 1b. Load persona for the resolved agent
+        persona_content: str | None = None
+        try:
+            persona_content = load_persona(
+                agent.persona,
+                personas_dir=self._personas_dir,
+            )
+        except PersonaError:
+            logger.warning(
+                "Could not load persona '%s' for agent '%s'; "
+                "proceeding without persona",
+                agent.persona, agent_name,
+            )
+
         # 2. Find or create session
         session = await self._session_manager.get_or_create_session(
             message, agent_name,
@@ -125,7 +147,9 @@ class Dispatcher:
 
         # 4. Execute
         try:
-            result: ExecutorResult = await self._executor.execute(message)
+            result: ExecutorResult = await self._executor.execute(
+                message, persona=persona_content,
+            )
         except Exception:
             logger.exception(
                 "Executor failed for session %s", session_id,
