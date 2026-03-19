@@ -121,17 +121,17 @@ def server_env(tmp_path):
 
 def test_build_message_required_fields():
     """_build_message returns a dict with all required StandardMessage fields."""
-    msg = _build_message("hello")
+    msg = _build_message("hello", "cli-abc12345")
     assert msg["source"] == "terminal"
     assert msg["content"] == "hello"
-    assert "channel_ref" in msg
+    assert msg["channel_ref"] == "cli-abc12345"
     assert "user_id" in msg
     assert "session_id" not in msg
 
 
 def test_build_message_with_session_id():
     """_build_message includes session_id when provided."""
-    msg = _build_message("hello", session_id="s123")
+    msg = _build_message("hello", "cli-abc12345", session_id="s123")
     assert msg["session_id"] == "s123"
 
 
