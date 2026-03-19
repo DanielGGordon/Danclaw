@@ -217,7 +217,7 @@ Structured JSONL telemetry for every significant system action. A Slack log chan
 
 ### Acceptance criteria
 
-- [ ] Every dispatcher action emits a telemetry event: permission checks, routing decisions, agent spawns, tool calls, session state changes, errors, fallbacks
+- [x] Every dispatcher action emits a telemetry event: permission checks, routing decisions, agent spawns, tool calls, session state changes, errors, fallbacks
 - [ ] Events written to JSONL file (append-only) and stored in `telemetry_events` DB table
 - [ ] Each event has: event_type, session_id, source, status, payload, timestamp
 - [ ] Slack log channel: bot posts a summary when sessions complete or errors occur
