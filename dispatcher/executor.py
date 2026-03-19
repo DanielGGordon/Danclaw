@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Callable, Protocol
 
 from dispatcher.models import StandardMessage
+from dispatcher.telemetry import TelemetryCollector
 
 logger = logging.getLogger(__name__)
 
@@ -256,6 +257,7 @@ def build_executor(
     timeout: int | None = None,
     fallback_notification: str = "silent",
     notification_callback: Callable[[str], None] | None = None,
+    telemetry: TelemetryCollector | None = None,
 ) -> FallbackExecutor:
     """Build a :class:`FallbackExecutor` from a list of backend names.
 
@@ -280,6 +282,9 @@ def build_executor(
     notification_callback:
         Optional callable invoked with notification text on fallback.
         Passed through to :class:`FallbackExecutor`.
+    telemetry:
+        Optional :class:`TelemetryCollector` for recording fallback
+        events.  Passed through to :class:`FallbackExecutor`.
 
     Returns
     -------
@@ -315,6 +320,7 @@ def build_executor(
         executors,
         fallback_notification=fallback_notification,
         notification_callback=notification_callback,
+        telemetry=telemetry,
     )
 
 
@@ -331,7 +337,8 @@ class FallbackExecutor:
     When a fallback occurs (i.e. a non-primary executor succeeds),
     the optional *notification_callback* is invoked with the
     notification text.  The notification text is then prepended to
-    the response content.
+    the response content.  A telemetry event is emitted recording
+    the failed backend(s) and the successful backend.
 
     Parameters
     ----------
@@ -346,6 +353,11 @@ class FallbackExecutor:
     notification_callback:
         Optional callable invoked with the notification text when a
         fallback occurs (and the mode is not ``"silent"``).
+    telemetry:
+        Optional :class:`TelemetryCollector` instance for recording
+        fallback events.  When provided, a ``"fallback"`` event is
+        emitted each time a non-primary executor succeeds, with
+        ``failed_backends`` and ``succeeded_backend`` in the payload.
     """
 
     def __init__(
@@ -354,12 +366,14 @@ class FallbackExecutor:
         *,
         fallback_notification: str = "silent",
         notification_callback: Callable[[str], None] | None = None,
+        telemetry: TelemetryCollector | None = None,
     ) -> None:
         if not executors:
             raise ValueError("FallbackExecutor requires at least one executor")
         self._executors = list(executors)
         self._fallback_notification = fallback_notification
         self._notification_callback = notification_callback
+        self._telemetry = telemetry
 
     def _resolve_notification(self) -> str | None:
         """Return the notification text, or ``None`` for silent mode."""
@@ -384,6 +398,7 @@ class FallbackExecutor:
         text is prepended to the response content.
         """
         last_exc: Exception | None = None
+        failed_backends: list[str] = []
         for idx, executor in enumerate(self._executors):
             try:
                 result = await executor.execute(
@@ -391,6 +406,14 @@ class FallbackExecutor:
                 )
                 if idx > 0:
                     # A fallback executor succeeded
+                    if self._telemetry is not None:
+                        self._telemetry.record(
+                            "fallback",
+                            {
+                                "failed_backends": failed_backends,
+                                "succeeded_backend": result.backend,
+                            },
+                        )
                     note = self._resolve_notification()
                     if note is not None:
                         if self._notification_callback is not None:
@@ -401,9 +424,20 @@ class FallbackExecutor:
                         )
                 return result
             except Exception as exc:
+                # Determine backend name from the executor class
+                backend_label = type(executor).__name__
+                # Use well-known mappings for cleaner labels
+                _CLASS_TO_BACKEND = {
+                    "ClaudeExecutor": "claude",
+                    "CodexExecutor": "codex",
+                    "MockExecutor": "mock",
+                }
+                failed_backends.append(
+                    _CLASS_TO_BACKEND.get(backend_label, backend_label)
+                )
                 logger.warning(
                     "Executor %s failed: %s; trying next fallback",
-                    type(executor).__name__,
+                    backend_label,
                     exc,
                 )
                 last_exc = exc
