@@ -18,6 +18,7 @@ from dispatcher.telemetry import (
     JsonlSink,
     TelemetryCollector,
     TelemetryEvent,
+    TelemetrySink,
 )
 
 __all__ = [
@@ -41,4 +42,5 @@ __all__ = [
     "TelemetryEventRow",
     "JsonlSink",
     "DbSink",
+    "TelemetrySink",
 ]

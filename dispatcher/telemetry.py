@@ -116,12 +116,13 @@ class DbSink:
     async def flush(self) -> None:
         """Persist all pending events to the database."""
         while self._pending:
-            event = self._pending.pop(0)
+            event = self._pending[0]
             await self._repo.save_telemetry_event(
                 event_type=event.event_type,
                 payload=event.payload,
                 timestamp=event.timestamp,
             )
+            self._pending.pop(0)
 
 
 # ── Collector ────────────────────────────────────────────────────────
@@ -136,7 +137,7 @@ class TelemetryCollector:
 
     def __init__(self) -> None:
         self._events: list[TelemetryEvent] = []
-        self._sinks: list[Any] = []
+        self._sinks: list[TelemetrySink] = []
 
     @property
     def events(self) -> list[TelemetryEvent]:
@@ -144,11 +145,11 @@ class TelemetryCollector:
         return list(self._events)
 
     @property
-    def sinks(self) -> list[Any]:
+    def sinks(self) -> list[TelemetrySink]:
         """Return the list of registered sinks (read-only copy)."""
         return list(self._sinks)
 
-    def add_sink(self, sink: Any) -> None:
+    def add_sink(self, sink: TelemetrySink) -> None:
         """Register an additional sink to receive events."""
         self._sinks.append(sink)
 
