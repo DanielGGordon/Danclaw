@@ -4,7 +4,8 @@ WORKDIR /app
 
 # Install dependencies first (cached layer)
 COPY pyproject.toml .
-RUN pip install --no-cache-dir aiosqlite aiohttp
+RUN pip install --no-cache-dir $(python -c \
+    "import tomllib; print(' '.join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))")
 
 # Copy source
 COPY . .
