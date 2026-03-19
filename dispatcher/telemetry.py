@@ -25,7 +25,6 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from slack_sdk import WebClient
-from slack_sdk.errors import SlackApiError
 
 from dispatcher.repository import Repository
 
@@ -186,13 +185,15 @@ class SlackLogSink:
             return
         try:
             self._client.chat_postMessage(channel=self._channel, text=message)
-        except SlackApiError:
+        except Exception:
             logger.exception("SlackLogSink: failed to post message")
 
     # ── internal helpers ──────────────────────────────────────────────
 
     def _format(self, event: TelemetryEvent) -> str | None:
         """Return a formatted message string, or ``None`` to skip."""
+        if event.event_type not in self._TRIGGER_EVENT_TYPES:
+            return None
         if event.event_type == "session_state_changed":
             new_state = event.payload.get("new_state", event.status)
             if new_state not in self._TRIGGER_STATUSES:
