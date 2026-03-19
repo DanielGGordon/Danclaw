@@ -13,7 +13,7 @@ from dispatcher.models import StandardMessage
 from config import AgentConfig, DanClawConfig
 from dispatcher.repository import Repository
 from dispatcher.session_manager import SessionManager
-from tests.conftest import make_config
+from tests.conftest import make_config, make_personas_dir
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────
@@ -38,10 +38,20 @@ async def mgr(repo):
     return SessionManager(repo)
 
 
+@pytest.fixture
+def personas_dir(tmp_path):
+    """Create a temporary personas directory with a default.md file."""
+    return make_personas_dir(tmp_path)
+
+
 @pytest_asyncio.fixture
-async def dispatcher(mgr, repo):
+async def dispatcher(mgr, repo, personas_dir):
     """Dispatcher with default MockExecutor (echo mode)."""
-    return Dispatcher(mgr, repo, MockExecutor(), config=make_config("test-agent"))
+    return Dispatcher(
+        mgr, repo, MockExecutor(),
+        config=make_config("test-agent"),
+        personas_dir=personas_dir,
+    )
 
 
 def _msg(
@@ -145,13 +155,21 @@ async def test_dispatch_with_explicit_session_id(dispatcher):
 class _FailingExecutor:
     """Executor that always raises."""
 
-    async def execute(self, message: StandardMessage) -> ExecutorResult:
+    async def execute(
+        self,
+        message: StandardMessage,
+        *,
+        persona: str | None = None,
+    ) -> ExecutorResult:
         raise RuntimeError("backend crashed")
 
 
 @pytest.mark.asyncio
-async def test_dispatch_sets_error_state_on_executor_failure(mgr, repo):
-    dispatcher = Dispatcher(mgr, repo, _FailingExecutor(), config=make_config("agent"))
+async def test_dispatch_sets_error_state_on_executor_failure(mgr, repo, personas_dir):
+    dispatcher = Dispatcher(
+        mgr, repo, _FailingExecutor(),
+        config=make_config("agent"), personas_dir=personas_dir,
+    )
     with pytest.raises(RuntimeError, match="backend crashed"):
         await dispatcher.dispatch(_msg())
 
@@ -165,8 +183,11 @@ async def test_dispatch_sets_error_state_on_executor_failure(mgr, repo):
 
 
 @pytest.mark.asyncio
-async def test_dispatch_stores_user_message_before_executor_error(mgr, repo):
-    dispatcher = Dispatcher(mgr, repo, _FailingExecutor(), config=make_config("agent"))
+async def test_dispatch_stores_user_message_before_executor_error(mgr, repo, personas_dir):
+    dispatcher = Dispatcher(
+        mgr, repo, _FailingExecutor(),
+        config=make_config("agent"), personas_dir=personas_dir,
+    )
     with pytest.raises(RuntimeError):
         await dispatcher.dispatch(_msg(content="should persist"))
 
@@ -181,9 +202,12 @@ async def test_dispatch_stores_user_message_before_executor_error(mgr, repo):
 # ── Fixed response executor ──────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_dispatch_with_fixed_response_executor(mgr, repo):
+async def test_dispatch_with_fixed_response_executor(mgr, repo, personas_dir):
     executor = MockExecutor(fixed_response="I am a bot.")
-    dispatcher = Dispatcher(mgr, repo, executor, config=make_config("bot"))
+    dispatcher = Dispatcher(
+        mgr, repo, executor,
+        config=make_config("bot"), personas_dir=personas_dir,
+    )
     result = await dispatcher.dispatch(_msg(content="anything"))
     assert result.response == "I am a bot."
     assert result.backend == "mock"
@@ -200,11 +224,14 @@ def test_dispatch_result_is_frozen():
 # ── Integration: full round-trip with follow-up ──────────────────────
 
 @pytest.mark.asyncio
-async def test_full_round_trip_with_followup(mgr, repo):
+async def test_full_round_trip_with_followup(mgr, repo, personas_dir):
     """Send a message, get a response, send a follow-up, verify session
     continuity and all messages are persisted in order."""
     executor = MockExecutor()
-    dispatcher = Dispatcher(mgr, repo, executor, config=make_config("agent"))
+    dispatcher = Dispatcher(
+        mgr, repo, executor,
+        config=make_config("agent"), personas_dir=personas_dir,
+    )
 
     r1 = await dispatcher.dispatch(_msg(content="hello"))
     assert r1.response == "mock response: hello"
@@ -233,7 +260,7 @@ async def test_full_round_trip_with_followup(mgr, repo):
 # ── Config-driven agent resolution ──────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_default_agent_selected_from_config(mgr, repo):
+async def test_default_agent_selected_from_config(mgr, repo, personas_dir):
     """Dispatcher selects the default (first) agent from config."""
     config = DanClawConfig(
         agents=[
@@ -241,16 +268,20 @@ async def test_default_agent_selected_from_config(mgr, repo):
             AgentConfig(name="secondary", persona="default", backend_preference=["codex"]),
         ],
     )
-    dispatcher = Dispatcher(mgr, repo, MockExecutor(), config=config)
+    dispatcher = Dispatcher(
+        mgr, repo, MockExecutor(), config=config, personas_dir=personas_dir,
+    )
     result = await dispatcher.dispatch(_msg(content="hello"))
     assert result.agent_name == "primary"
 
 
 @pytest.mark.asyncio
-async def test_agent_name_stored_in_session(mgr, repo):
+async def test_agent_name_stored_in_session(mgr, repo, personas_dir):
     """The resolved agent name is stored in the session row."""
     config = make_config("my-agent")
-    dispatcher = Dispatcher(mgr, repo, MockExecutor(), config=config)
+    dispatcher = Dispatcher(
+        mgr, repo, MockExecutor(), config=config, personas_dir=personas_dir,
+    )
     result = await dispatcher.dispatch(_msg(content="hello"))
 
     session = await mgr.get_session(result.session_id)
@@ -259,19 +290,23 @@ async def test_agent_name_stored_in_session(mgr, repo):
 
 
 @pytest.mark.asyncio
-async def test_agent_name_in_dispatch_result(mgr, repo):
+async def test_agent_name_in_dispatch_result(mgr, repo, personas_dir):
     """DispatchResult includes the agent name that handled the message."""
     config = make_config("resolver-agent")
-    dispatcher = Dispatcher(mgr, repo, MockExecutor(), config=config)
+    dispatcher = Dispatcher(
+        mgr, repo, MockExecutor(), config=config, personas_dir=personas_dir,
+    )
     result = await dispatcher.dispatch(_msg(content="hello"))
     assert result.agent_name == "resolver-agent"
 
 
 @pytest.mark.asyncio
-async def test_agent_name_consistent_across_session(mgr, repo):
+async def test_agent_name_consistent_across_session(mgr, repo, personas_dir):
     """Multiple dispatches on the same session report the same agent name."""
     config = make_config("consistent-agent")
-    dispatcher = Dispatcher(mgr, repo, MockExecutor(), config=config)
+    dispatcher = Dispatcher(
+        mgr, repo, MockExecutor(), config=config, personas_dir=personas_dir,
+    )
 
     r1 = await dispatcher.dispatch(_msg(content="first"))
     r2 = await dispatcher.dispatch(_msg(content="second"))
@@ -282,3 +317,80 @@ async def test_agent_name_consistent_across_session(mgr, repo):
 
     session = await mgr.get_session(r1.session_id)
     assert session.agent_name == "consistent-agent"
+
+
+# ── Persona injection ────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_persona_loaded_from_correct_file(mgr, repo, tmp_path):
+    """Dispatcher loads persona content from the file matching the agent's
+    persona name in the personas directory."""
+    personas_dir = make_personas_dir(tmp_path / "custom", {
+        "default": "You are the default.",
+        "expert": "You are an expert assistant.",
+    })
+    config = make_config("agent", persona="expert")
+    executor = MockExecutor()
+    dispatcher = Dispatcher(
+        mgr, repo, executor, config=config, personas_dir=personas_dir,
+    )
+    await dispatcher.dispatch(_msg(content="hello"))
+    assert executor.last_persona == "You are an expert assistant."
+
+
+@pytest.mark.asyncio
+async def test_persona_content_passed_to_executor(mgr, repo, tmp_path):
+    """The executor receives the full persona markdown content."""
+    persona_text = "You are a helpful bot.\n\nBe concise."
+    personas_dir = make_personas_dir(tmp_path / "p", {"default": persona_text})
+    config = make_config("agent")
+    executor = MockExecutor()
+    dispatcher = Dispatcher(
+        mgr, repo, executor, config=config, personas_dir=personas_dir,
+    )
+    await dispatcher.dispatch(_msg(content="hi"))
+    assert executor.last_persona == persona_text
+
+
+@pytest.mark.asyncio
+async def test_executor_receives_persona(mgr, repo, personas_dir):
+    """MockExecutor stores the persona it receives via last_persona."""
+    executor = MockExecutor()
+    dispatcher = Dispatcher(
+        mgr, repo, executor,
+        config=make_config("agent"), personas_dir=personas_dir,
+    )
+    await dispatcher.dispatch(_msg(content="test"))
+    assert executor.last_persona is not None
+    assert isinstance(executor.last_persona, str)
+    assert len(executor.last_persona) > 0
+
+
+@pytest.mark.asyncio
+async def test_persona_none_when_file_missing(mgr, repo, tmp_path):
+    """When the persona file does not exist, executor receives None."""
+    empty_dir = tmp_path / "empty_personas"
+    empty_dir.mkdir()
+    config = make_config("agent", persona="nonexistent")
+    executor = MockExecutor()
+    dispatcher = Dispatcher(
+        mgr, repo, executor, config=config, personas_dir=empty_dir,
+    )
+    await dispatcher.dispatch(_msg(content="hello"))
+    assert executor.last_persona is None
+
+
+@pytest.mark.asyncio
+async def test_persona_persists_across_dispatches(mgr, repo, tmp_path):
+    """Persona is loaded and passed on every dispatch call."""
+    persona_text = "Persistent persona."
+    personas_dir = make_personas_dir(tmp_path / "pp", {"default": persona_text})
+    executor = MockExecutor()
+    dispatcher = Dispatcher(
+        mgr, repo, executor,
+        config=make_config("agent"), personas_dir=personas_dir,
+    )
+    await dispatcher.dispatch(_msg(content="first"))
+    assert executor.last_persona == persona_text
+    await dispatcher.dispatch(_msg(content="second"))
+    assert executor.last_persona == persona_text

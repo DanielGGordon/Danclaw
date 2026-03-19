@@ -81,6 +81,30 @@ class TestMockExecutorFixed:
         assert result.content == ""
 
 
+# ── Persona support ──────────────────────────────────────────────────
+
+class TestMockExecutorPersona:
+    @pytest.mark.asyncio
+    async def test_stores_persona(self):
+        executor = MockExecutor()
+        await executor.execute(_make_message("hi"), persona="Be concise.")
+        assert executor.last_persona == "Be concise."
+
+    @pytest.mark.asyncio
+    async def test_persona_defaults_to_none(self):
+        executor = MockExecutor()
+        await executor.execute(_make_message("hi"))
+        assert executor.last_persona is None
+
+    @pytest.mark.asyncio
+    async def test_last_persona_updated_each_call(self):
+        executor = MockExecutor()
+        await executor.execute(_make_message("a"), persona="first")
+        assert executor.last_persona == "first"
+        await executor.execute(_make_message("b"), persona="second")
+        assert executor.last_persona == "second"
+
+
 # ── Protocol conformance ─────────────────────────────────────────────
 
 class TestProtocol:

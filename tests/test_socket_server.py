@@ -301,7 +301,12 @@ async def test_dispatch_error_returns_error_response(db, socket_path):
     from dispatcher.executor import ExecutorResult
 
     class _FailingExecutor:
-        async def execute(self, message: StandardMessage) -> ExecutorResult:
+        async def execute(
+            self,
+            message: StandardMessage,
+            *,
+            persona: str | None = None,
+        ) -> ExecutorResult:
             raise RuntimeError("executor exploded")
 
     repo = Repository(db)
