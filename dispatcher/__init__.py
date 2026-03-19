@@ -6,6 +6,7 @@ from dispatcher.executor import (
     ExecutorResult,
     FallbackExecutor,
     MockExecutor,
+    build_executor,
 )
 from dispatcher.models import StandardMessage
 from dispatcher.permissions import requires_approval, resolve_permissions
@@ -25,6 +26,7 @@ __all__ = [
     "ExecutorResult",
     "FallbackExecutor",
     "MockExecutor",
+    "build_executor",
     "SocketServer",
     "requires_approval",
     "resolve_permissions",

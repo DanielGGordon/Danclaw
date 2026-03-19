@@ -12,6 +12,7 @@ from dispatcher.executor import (
     ExecutorResult,
     FallbackExecutor,
     MockExecutor,
+    build_executor,
 )
 from dispatcher.models import StandardMessage
 
@@ -466,3 +467,56 @@ class TestFallbackExecutorAllFail:
         executor = FallbackExecutor([fail1, fail2])
         with pytest.raises(ValueError, match="second failed"):
             await executor.execute(_make_message("hi"))
+
+
+# ── build_executor factory tests ─────────────────────────────────────
+
+class TestBuildExecutorDefault:
+    def test_default_preference_creates_claude_then_codex(self):
+        executor = build_executor(["claude", "codex"])
+        assert isinstance(executor, FallbackExecutor)
+        assert len(executor._executors) == 2
+        assert isinstance(executor._executors[0], ClaudeExecutor)
+        assert isinstance(executor._executors[1], CodexExecutor)
+
+    def test_single_backend(self):
+        executor = build_executor(["claude"])
+        assert len(executor._executors) == 1
+        assert isinstance(executor._executors[0], ClaudeExecutor)
+
+    def test_mock_backend(self):
+        executor = build_executor(["mock"])
+        assert len(executor._executors) == 1
+        assert isinstance(executor._executors[0], MockExecutor)
+
+
+class TestBuildExecutorCustomOrder:
+    def test_codex_before_claude(self):
+        executor = build_executor(["codex", "claude"])
+        assert isinstance(executor._executors[0], CodexExecutor)
+        assert isinstance(executor._executors[1], ClaudeExecutor)
+
+    def test_three_backends(self):
+        executor = build_executor(["codex", "claude", "mock"])
+        assert len(executor._executors) == 3
+        assert isinstance(executor._executors[0], CodexExecutor)
+        assert isinstance(executor._executors[1], ClaudeExecutor)
+        assert isinstance(executor._executors[2], MockExecutor)
+
+
+class TestBuildExecutorErrors:
+    def test_unknown_backend_raises_value_error(self):
+        with pytest.raises(ValueError, match="Unknown backend 'gpt4'"):
+            build_executor(["gpt4"])
+
+    def test_unknown_backend_lists_known(self):
+        with pytest.raises(ValueError, match="Known backends:"):
+            build_executor(["nonexistent"])
+
+    def test_empty_list_raises_value_error(self):
+        with pytest.raises(ValueError, match="non-empty"):
+            build_executor([])
+
+    def test_mixed_valid_and_invalid_raises(self):
+        with pytest.raises(ValueError, match="Unknown backend 'bad'"):
+            build_executor(["claude", "bad"])

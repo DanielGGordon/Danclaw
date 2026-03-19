@@ -211,6 +211,56 @@ class CodexExecutor:
         return ExecutorResult(content=content, backend="codex")
 
 
+# ── Backend registry and factory ─────────────────────────────────────
+
+_BACKEND_REGISTRY: dict[str, type] = {
+    "claude": ClaudeExecutor,
+    "codex": CodexExecutor,
+    "mock": MockExecutor,
+}
+
+
+def build_executor(backend_preference: list[str]) -> FallbackExecutor:
+    """Build a :class:`FallbackExecutor` from a list of backend names.
+
+    Maps each name in *backend_preference* to the corresponding executor
+    class, instantiates it with default arguments, and wraps them all in
+    a :class:`FallbackExecutor`.
+
+    Parameters
+    ----------
+    backend_preference:
+        Ordered list of backend names (e.g. ``["claude", "codex"]``).
+        Must be non-empty.  Each name must be a key in the backend
+        registry (``"claude"``, ``"codex"``, ``"mock"``).
+
+    Returns
+    -------
+    FallbackExecutor
+        An executor that tries each backend in the given order.
+
+    Raises
+    ------
+    ValueError
+        If *backend_preference* is empty or contains an unknown backend
+        name.
+    """
+    if not backend_preference:
+        raise ValueError("backend_preference must be a non-empty list")
+
+    executors = []
+    for name in backend_preference:
+        cls = _BACKEND_REGISTRY.get(name)
+        if cls is None:
+            known = ", ".join(sorted(_BACKEND_REGISTRY))
+            raise ValueError(
+                f"Unknown backend '{name}'. "
+                f"Known backends: {known}"
+            )
+        executors.append(cls())
+    return FallbackExecutor(executors)
+
+
 class FallbackExecutor:
     """Executor that tries multiple executors in sequence.
 
