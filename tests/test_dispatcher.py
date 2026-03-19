@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import aiosqlite
 import pytest
 import pytest_asyncio
@@ -394,3 +396,191 @@ async def test_persona_persists_across_dispatches(mgr, repo, tmp_path):
     assert executor.last_persona == persona_text
     await dispatcher.dispatch(_msg(content="second"))
     assert executor.last_persona == persona_text
+
+
+# ── Persona switching ─────────────────────────────────────────────────
+
+
+def _multi_agent_config() -> DanClawConfig:
+    """Build a config with two agents for switch tests."""
+    return DanClawConfig(
+        agents=[
+            AgentConfig(
+                name="alpha",
+                persona="alpha_persona",
+                backend_preference=["claude"],
+            ),
+            AgentConfig(
+                name="beta",
+                persona="beta_persona",
+                backend_preference=["codex"],
+            ),
+        ],
+    )
+
+
+def _multi_agent_personas_dir(tmp_path: Path) -> Path:
+    """Create a personas dir with files for both agents."""
+    return make_personas_dir(tmp_path, {
+        "default": "You are the default.",
+        "alpha_persona": "You are alpha.",
+        "beta_persona": "You are beta.",
+    })
+
+
+@pytest.mark.asyncio
+async def test_switch_command_slash(mgr, repo, tmp_path):
+    """'/switch beta' switches the session agent to beta."""
+    personas_dir = _multi_agent_personas_dir(tmp_path)
+    config = _multi_agent_config()
+    dispatcher = Dispatcher(
+        mgr, repo, MockExecutor(), config=config, personas_dir=personas_dir,
+    )
+    # Start a session
+    r1 = await dispatcher.dispatch(_msg(content="hello"))
+    assert r1.agent_name == "alpha"
+    session_id = r1.session_id
+
+    # Switch persona
+    r2 = await dispatcher.dispatch(_msg(content="/switch beta"))
+    assert r2.session_id == session_id
+    assert r2.agent_name == "beta"
+    assert "Switched to agent 'beta'" in r2.response
+    assert r2.backend == "system"
+
+    # Verify DB
+    session = await mgr.get_session(session_id)
+    assert session.agent_name == "beta"
+
+
+@pytest.mark.asyncio
+async def test_switch_command_natural_language(mgr, repo, tmp_path):
+    """'switch to beta' switches the session agent to beta."""
+    personas_dir = _multi_agent_personas_dir(tmp_path)
+    config = _multi_agent_config()
+    dispatcher = Dispatcher(
+        mgr, repo, MockExecutor(), config=config, personas_dir=personas_dir,
+    )
+    r1 = await dispatcher.dispatch(_msg(content="hello"))
+    r2 = await dispatcher.dispatch(_msg(content="switch to beta"))
+    assert r2.session_id == r1.session_id
+    assert r2.agent_name == "beta"
+
+
+@pytest.mark.asyncio
+async def test_switch_to_invalid_agent_returns_error(mgr, repo, tmp_path):
+    """Switching to a nonexistent agent returns an error without changing the session."""
+    personas_dir = _multi_agent_personas_dir(tmp_path)
+    config = _multi_agent_config()
+    dispatcher = Dispatcher(
+        mgr, repo, MockExecutor(), config=config, personas_dir=personas_dir,
+    )
+    r1 = await dispatcher.dispatch(_msg(content="hello"))
+    r2 = await dispatcher.dispatch(_msg(content="/switch nonexistent"))
+
+    assert r2.session_id == r1.session_id
+    assert "Unknown agent 'nonexistent'" in r2.response
+    assert r2.backend == "system"
+    # Agent should remain unchanged
+    assert r2.agent_name == "alpha"
+
+    session = await mgr.get_session(r1.session_id)
+    assert session.agent_name == "alpha"
+
+
+@pytest.mark.asyncio
+async def test_subsequent_messages_use_new_persona_after_switch(mgr, repo, tmp_path):
+    """After switching, the next message uses the new agent's persona."""
+    personas_dir = _multi_agent_personas_dir(tmp_path)
+    config = _multi_agent_config()
+    executor = MockExecutor()
+    dispatcher = Dispatcher(
+        mgr, repo, executor, config=config, personas_dir=personas_dir,
+    )
+    # Send initial message (uses alpha)
+    await dispatcher.dispatch(_msg(content="hello"))
+    assert executor.last_persona == "You are alpha."
+
+    # Switch to beta
+    await dispatcher.dispatch(_msg(content="/switch beta"))
+
+    # Next message should use beta's persona
+    r3 = await dispatcher.dispatch(_msg(content="after switch"))
+    assert r3.agent_name == "beta"
+    assert executor.last_persona == "You are beta."
+
+
+@pytest.mark.asyncio
+async def test_switch_stores_messages_in_session(mgr, repo, tmp_path):
+    """The switch command and confirmation are stored as messages."""
+    personas_dir = _multi_agent_personas_dir(tmp_path)
+    config = _multi_agent_config()
+    dispatcher = Dispatcher(
+        mgr, repo, MockExecutor(), config=config, personas_dir=personas_dir,
+    )
+    r1 = await dispatcher.dispatch(_msg(content="hello"))
+    await dispatcher.dispatch(_msg(content="/switch beta"))
+
+    messages = await repo.get_messages_for_session(r1.session_id)
+    # hello(user), response(assistant), /switch(user), confirmation(assistant)
+    assert len(messages) == 4
+    assert messages[2].role == "user"
+    assert messages[2].content == "/switch beta"
+    assert messages[3].role == "assistant"
+    assert "Switched to agent 'beta'" in messages[3].content
+
+
+@pytest.mark.asyncio
+async def test_switch_invalid_stores_error_message(mgr, repo, tmp_path):
+    """When switching to an invalid agent, the error is stored as a message."""
+    personas_dir = _multi_agent_personas_dir(tmp_path)
+    config = _multi_agent_config()
+    dispatcher = Dispatcher(
+        mgr, repo, MockExecutor(), config=config, personas_dir=personas_dir,
+    )
+    r1 = await dispatcher.dispatch(_msg(content="hello"))
+    await dispatcher.dispatch(_msg(content="/switch nope"))
+
+    messages = await repo.get_messages_for_session(r1.session_id)
+    assert len(messages) == 4
+    assert messages[3].role == "assistant"
+    assert "Unknown agent 'nope'" in messages[3].content
+
+
+@pytest.mark.asyncio
+async def test_switch_case_insensitive_prefix(mgr, repo, tmp_path):
+    """Switch command detection is case-insensitive for the prefix."""
+    personas_dir = _multi_agent_personas_dir(tmp_path)
+    config = _multi_agent_config()
+    dispatcher = Dispatcher(
+        mgr, repo, MockExecutor(), config=config, personas_dir=personas_dir,
+    )
+    await dispatcher.dispatch(_msg(content="hello"))
+    r2 = await dispatcher.dispatch(_msg(content="Switch To beta"))
+    assert r2.agent_name == "beta"
+
+
+@pytest.mark.asyncio
+async def test_switch_then_switch_back(mgr, repo, tmp_path):
+    """Switching to beta and then back to alpha works correctly."""
+    personas_dir = _multi_agent_personas_dir(tmp_path)
+    config = _multi_agent_config()
+    executor = MockExecutor()
+    dispatcher = Dispatcher(
+        mgr, repo, executor, config=config, personas_dir=personas_dir,
+    )
+    await dispatcher.dispatch(_msg(content="hello"))
+    assert executor.last_persona == "You are alpha."
+
+    await dispatcher.dispatch(_msg(content="/switch beta"))
+    await dispatcher.dispatch(_msg(content="as beta"))
+    assert executor.last_persona == "You are beta."
+
+    await dispatcher.dispatch(_msg(content="/switch alpha"))
+    await dispatcher.dispatch(_msg(content="as alpha again"))
+    assert executor.last_persona == "You are alpha."
+
+    session = await mgr.get_session(
+        (await dispatcher.dispatch(_msg(content="check"))).session_id
+    )
+    assert session.agent_name == "alpha"

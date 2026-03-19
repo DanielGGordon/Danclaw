@@ -7,17 +7,18 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
 - `StandardMessage` — frozen dataclass representing the universal internal message format. Fields: `source`, `channel_ref`, `user_id`, `content`, `session_id` (optional). Includes `to_dict()` and `from_dict()` serialization helpers for JSON transport.
 - `init_db(db_path)` — async function that creates the SQLite schema (sessions, messages, channel_bindings tables) using `CREATE TABLE IF NOT EXISTS`. Safe to call on every startup.
 - `Repository(db)` — async repository abstraction layer for all database access. Takes an `aiosqlite.Connection`. Methods:
-  - Sessions: `create_session`, `get_session`, `update_session_state`, `list_sessions`
+  - Sessions: `create_session`, `get_session`, `update_session_state`, `update_session_agent`, `list_sessions`
   - Messages: `save_message`, `get_messages_for_session`
   - Channel bindings: `add_channel_binding`, `get_bindings_for_session`, `find_session_by_channel`
 - Row dataclasses: `SessionRow`, `MessageRow`, `ChannelBindingRow` — frozen dataclasses for type-safe query results.
 - `SessionManager(repo)` — high-level session lifecycle manager wrapping the repository. Methods:
   - `get_or_create_session(message, agent_name)` — finds a live session by explicit ID or channel binding, or creates a new one
   - `get_session(session_id)` — retrieves a session by ID
+  - `update_agent(session_id, agent_name)` — changes the agent assigned to a session
   - `update_state(session_id, new_state)` — transitions session state with validation of allowed transitions
   - `list_active_sessions()` — returns all ACTIVE and WAITING_FOR_HUMAN sessions
 - `Dispatcher(session_manager, repo, executor, config, *, personas_dir=None)` — core routing class that accepts a `StandardMessage` and runs the full pipeline. Uses the loaded `DanClawConfig` to resolve which agent handles the message (currently selects the default/first agent; per-channel routing is planned for later). Loads the agent's persona via `load_persona` and passes it to the executor on each dispatch:
-  - `dispatch(message) -> DispatchResult` — resolves the agent from config, loads the agent's persona content, finds or creates a session, stores the inbound message, calls the executor with the persona, stores the response, and returns a `DispatchResult`.
+  - `dispatch(message) -> DispatchResult` — resolves the agent from config, loads the agent's persona content, finds or creates a session, stores the inbound message, calls the executor with the persona, stores the response, and returns a `DispatchResult`. Detects persona switch commands (`/switch <agent>` or `switch to <agent>`) and updates the session's agent accordingly. After a switch, subsequent messages use the new agent's persona.
   - On executor failure, sets session state to `ERROR` and re-raises the exception.
   - If the persona file cannot be loaded, logs a warning and proceeds with `persona=None`.
 - `DispatchResult` — frozen dataclass with `session_id`, `response` (text), `backend` (name of the backend that produced it), and `agent_name` (name of the agent that handled the message).
@@ -61,4 +62,4 @@ Environment variables:
 
 ## Status
 
-Dispatcher starts as a standalone process, loads config, initialises the database, starts the SocketServer on a Unix domain socket, and shuts down cleanly on signal. The CLI (`cli/agent.py`) connects to the dispatcher as a separate process over the Unix socket. SQLite schema initialisation (`init_db`), repository abstraction layer (`Repository`), session lifecycle manager (`SessionManager`), mocked executor (`MockExecutor`), the core `Dispatcher` routing class, and the `SocketServer` Unix domain socket interface are available. The full pipeline (message in -> session -> executor -> store -> response) works end-to-end with the mock executor, accessible via Unix domain socket. The dispatcher loads each agent's persona from the personas directory and injects it into the executor on every dispatch call. The real AI executor backends (claude, codex) are planned for Phase 6.
+Dispatcher starts as a standalone process, loads config, initialises the database, starts the SocketServer on a Unix domain socket, and shuts down cleanly on signal. The CLI (`cli/agent.py`) connects to the dispatcher as a separate process over the Unix socket. SQLite schema initialisation (`init_db`), repository abstraction layer (`Repository`), session lifecycle manager (`SessionManager`), mocked executor (`MockExecutor`), the core `Dispatcher` routing class, and the `SocketServer` Unix domain socket interface are available. The full pipeline (message in -> session -> executor -> store -> response) works end-to-end with the mock executor, accessible via Unix domain socket. The dispatcher loads each agent's persona from the personas directory and injects it into the executor on every dispatch call. Persona switching is supported: users can send `/switch <agent>` or `switch to <agent>` to change the active agent within a session, with subsequent messages using the new agent's persona. The real AI executor backends (claude, codex) are planned for Phase 6.

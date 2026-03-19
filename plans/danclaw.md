@@ -101,7 +101,7 @@ Agents become real entities loaded from config. Each agent has a name, a persona
 - [x] Personas stored as markdown files in `personas/` directory, loaded by name
 - [x] Dispatcher resolves which agent to use for a given message based on config
 - [x] Agent's persona is injected as context when invoking the executor
-- [ ] Persona switching: a user can request a different persona within a session, and subsequent messages use the new persona
+- [x] Persona switching: a user can request a different persona within a session, and subsequent messages use the new persona
 - [ ] Config validation: startup fails with a clear error if an agent references a missing persona or tool
 - [ ] Default agent configured for when no specific agent is matched
 

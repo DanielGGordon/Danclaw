@@ -153,6 +153,33 @@ class SessionManager:
         """
         return await self._repo.get_bindings_for_session(session_id)
 
+    async def update_agent(
+        self, session_id: str, agent_name: str,
+    ) -> SessionRow:
+        """Change the agent assigned to a session.
+
+        Parameters
+        ----------
+        session_id:
+            ID of the session to update.
+        agent_name:
+            New agent name to assign.
+
+        Returns
+        -------
+        SessionRow
+            The updated session row.
+
+        Raises
+        ------
+        KeyError
+            If no session with *session_id* exists.
+        """
+        updated = await self._repo.update_session_agent(session_id, agent_name)
+        if updated is None:
+            raise KeyError(f"Session {session_id!r} not found")
+        return updated
+
     async def update_state(
         self, session_id: str, new_state: str,
     ) -> SessionRow:
