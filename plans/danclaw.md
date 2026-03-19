@@ -163,7 +163,7 @@ Slack Socket Mode bot that listens for messages (channel messages, DMs, @mention
 - [x] Multi-turn: bot asks a question → state=WAITING_FOR_HUMAN → user replies in thread → session resumes
 - [ ] Bot ignores its own messages (no loops)
 - [x] Slack listener runs as its own Docker container/service
-- [ ] Slack tokens loaded from `.env`, never logged
+- [x] Slack tokens loaded from `.env`, never logged
 
 ---
 
@@ -177,8 +177,8 @@ A session can be bound to multiple channels simultaneously. When you `agent atta
 
 ### Acceptance criteria
 
-- [ ] A session can have multiple channel bindings (e.g., both a Slack thread and a terminal)
-- [ ] `agent attach <session-id>` adds a terminal binding to an existing session
+- [x] A session can have multiple channel bindings (e.g., both a Slack thread and a terminal)
+- [x] `agent attach <session-id>` adds a terminal binding to an existing session
 - [ ] Messages sent from terminal are delivered to the agent and the response appears in both terminal and Slack thread
 - [ ] Messages sent from Slack are delivered to the agent and the response appears in both Slack thread and terminal
 - [ ] Attribution: terminal messages appear as the bot in Slack by default

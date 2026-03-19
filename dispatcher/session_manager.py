@@ -77,6 +77,12 @@ class SessionManager:
         if message.session_id is not None:
             session = await self._repo.get_session(message.session_id)
             if session is not None and session.state in _LIVE_STATES:
+                # Ensure a channel binding exists for this channel_ref.
+                # This is the path taken by ``agent attach``, which sends
+                # messages from a new terminal with the session_id set.
+                await self._ensure_binding(
+                    session.id, message.source, message.channel_ref,
+                )
                 return session
 
         # 2. Look up by channel binding
@@ -92,6 +98,25 @@ class SessionManager:
             session.id, message.source, message.channel_ref,
         )
         return session
+
+    async def _ensure_binding(
+        self,
+        session_id: str,
+        channel_type: str,
+        channel_ref: str,
+    ) -> None:
+        """Add a channel binding if one does not already exist.
+
+        Silently succeeds when the exact binding is already present
+        (IntegrityError from the UNIQUE constraint is caught).
+        """
+        try:
+            await self._repo.add_channel_binding(
+                session_id, channel_type, channel_ref,
+            )
+        except Exception:
+            # Binding already exists — nothing to do.
+            pass
 
     async def get_session(self, session_id: str) -> Optional[SessionRow]:
         """Retrieve a session by its ID.
