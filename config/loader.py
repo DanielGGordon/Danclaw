@@ -8,6 +8,45 @@ from pathlib import Path
 
 
 @dataclass(frozen=True)
+class ChannelPermissions:
+    """Permission definitions for a single channel.
+
+    Attributes:
+        allowed_tools: Tools available on this channel.
+        override: When True, user permissions are ignored — only channel
+            permissions apply.
+    """
+
+    allowed_tools: list[str] = field(default_factory=list)
+    override: bool = False
+
+
+@dataclass(frozen=True)
+class UserPermissions:
+    """Permission definitions for a single user.
+
+    Attributes:
+        additional_tools: Extra tools granted to this user, added on top of
+            the channel baseline (unless the channel override flag is set).
+    """
+
+    additional_tools: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class PermissionsConfig:
+    """Container for all permission definitions.
+
+    Attributes:
+        channels: Mapping of channel name to :class:`ChannelPermissions`.
+        users: Mapping of user identifier to :class:`UserPermissions`.
+    """
+
+    channels: dict[str, ChannelPermissions] = field(default_factory=dict)
+    users: dict[str, UserPermissions] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class AgentConfig:
     """Configuration for a single agent."""
 
@@ -23,6 +62,7 @@ class DanClawConfig:
 
     agents: list[AgentConfig]
     listeners: dict = field(default_factory=dict)
+    permissions: PermissionsConfig = field(default_factory=PermissionsConfig)
 
     @property
     def default_agent(self) -> AgentConfig:
@@ -107,6 +147,89 @@ def validate_config(
     if errors:
         detail = "; ".join(errors)
         raise ConfigError(f"Config validation failed: {detail}")
+
+
+def _parse_permissions(raw: object) -> PermissionsConfig:
+    """Parse and validate the ``permissions`` section of the config.
+
+    Args:
+        raw: The raw value from the JSON config (expected to be a dict).
+
+    Returns:
+        A validated :class:`PermissionsConfig`.
+
+    Raises:
+        ConfigError: On any structural or type error.
+    """
+    if not isinstance(raw, dict):
+        raise ConfigError("'permissions' must be a JSON object")
+
+    channels_raw = raw.get("channels", {})
+    if not isinstance(channels_raw, dict):
+        raise ConfigError("'permissions.channels' must be a JSON object")
+
+    channels: dict[str, ChannelPermissions] = {}
+    for ch_name, ch_data in channels_raw.items():
+        if not isinstance(ch_name, str) or not ch_name:
+            raise ConfigError("permissions.channels: keys must be non-empty strings")
+        if not isinstance(ch_data, dict):
+            raise ConfigError(
+                f"permissions.channels['{ch_name}']: must be a JSON object"
+            )
+
+        allowed_tools = ch_data.get("allowed_tools", [])
+        if not isinstance(allowed_tools, list):
+            raise ConfigError(
+                f"permissions.channels['{ch_name}']: 'allowed_tools' must be a list"
+            )
+        for tool in allowed_tools:
+            if not isinstance(tool, str) or not tool:
+                raise ConfigError(
+                    f"permissions.channels['{ch_name}']: "
+                    "'allowed_tools' entries must be non-empty strings"
+                )
+
+        override = ch_data.get("override", False)
+        if not isinstance(override, bool):
+            raise ConfigError(
+                f"permissions.channels['{ch_name}']: 'override' must be a boolean"
+            )
+
+        channels[ch_name] = ChannelPermissions(
+            allowed_tools=list(allowed_tools),
+            override=override,
+        )
+
+    users_raw = raw.get("users", {})
+    if not isinstance(users_raw, dict):
+        raise ConfigError("'permissions.users' must be a JSON object")
+
+    users: dict[str, UserPermissions] = {}
+    for user_id, user_data in users_raw.items():
+        if not isinstance(user_id, str) or not user_id:
+            raise ConfigError("permissions.users: keys must be non-empty strings")
+        if not isinstance(user_data, dict):
+            raise ConfigError(
+                f"permissions.users['{user_id}']: must be a JSON object"
+            )
+
+        additional_tools = user_data.get("additional_tools", [])
+        if not isinstance(additional_tools, list):
+            raise ConfigError(
+                f"permissions.users['{user_id}']: 'additional_tools' must be a list"
+            )
+        for tool in additional_tools:
+            if not isinstance(tool, str) or not tool:
+                raise ConfigError(
+                    f"permissions.users['{user_id}']: "
+                    "'additional_tools' entries must be non-empty strings"
+                )
+
+        users[user_id] = UserPermissions(
+            additional_tools=list(additional_tools),
+        )
+
+    return PermissionsConfig(channels=channels, users=users)
 
 
 def load_config(
@@ -225,7 +348,10 @@ def load_config(
     if not isinstance(listeners, dict):
         raise ConfigError("'listeners' must be a JSON object")
 
-    config = DanClawConfig(agents=agents, listeners=listeners)
+    # --- Validate permissions ---
+    permissions = _parse_permissions(data.get("permissions", {}))
+
+    config = DanClawConfig(agents=agents, listeners=listeners, permissions=permissions)
 
     # Validate that all referenced persona files and tool scripts exist.
     validate_config(config, personas_dir=personas_dir, tools_dir=tools_dir)

@@ -6,16 +6,19 @@ Configuration loading and validation. Reads the JSON config file that defines ag
 
 - `danclaw.json` — Main JSON config defining agents and listener settings.
 - `loader.py` — Config loader module: reads, validates, and returns structured config objects.
-- `__init__.py` — Re-exports `load_config`, `DanClawConfig`, `AgentConfig`, `ConfigError`.
+- `__init__.py` — Re-exports `load_config`, `validate_config`, `DanClawConfig`, `AgentConfig`, `ChannelPermissions`, `UserPermissions`, `PermissionsConfig`, `ConfigError`.
 
 ## Public Interface
 
 - `load_config(path, *, personas_dir=None, tools_dir=None)` — Reads and validates the JSON config file, returns a `DanClawConfig` instance. Raises `ConfigError` on any validation failure. Validates that all referenced persona files and tool scripts exist.
 - `validate_config(config, *, personas_dir, tools_dir)` — Validates that all agent persona files and tool scripts exist on disk. Collects all errors and reports them together in a single `ConfigError`. Can be called independently of `load_config`.
-- `DanClawConfig` — Frozen dataclass: `agents: list[AgentConfig]`, `listeners: dict`.
+- `DanClawConfig` — Frozen dataclass: `agents: list[AgentConfig]`, `listeners: dict`, `permissions: PermissionsConfig`.
   - `default_agent` — Property returning the first agent in the list. Raises `ConfigError` if no agents are configured.
   - `get_agent(name)` — Looks up an agent by name. Returns `None` if not found.
 - `AgentConfig` — Frozen dataclass: `name`, `persona`, `backend_preference`, `allowed_tools`.
+- `PermissionsConfig` — Frozen dataclass: `channels: dict[str, ChannelPermissions]`, `users: dict[str, UserPermissions]`. Defaults to empty dicts when omitted from config.
+- `ChannelPermissions` — Frozen dataclass: `allowed_tools: list[str]`, `override: bool`. The `override` flag, when True, locks the channel to channel-only permissions (user permissions are ignored).
+- `UserPermissions` — Frozen dataclass: `additional_tools: list[str]`. Extra tools granted to a user, additive on top of the channel baseline.
 - `ConfigError` — Exception raised for invalid or missing config.
 
 ## Validation Rules
@@ -28,6 +31,9 @@ Configuration loading and validation. Reads the JSON config file that defines ag
 - Each agent's `allowed_tools` entries must correspond to existing scripts in `tools/` (matched by stem, any extension).
 - All missing personas and tools are collected and reported in a single error message.
 - `listeners` must be a dict (defaults to `{}` if omitted).
+- `permissions` is optional (defaults to empty channels/users). When present:
+  - `permissions.channels` maps channel names to objects with `allowed_tools` (list of strings, default `[]`) and `override` (boolean, default `false`).
+  - `permissions.users` maps user identifiers to objects with `additional_tools` (list of strings, default `[]`).
 
 ## Relationship to Other Modules
 
@@ -37,4 +43,4 @@ Configuration loading and validation. Reads the JSON config file that defines ag
 
 ## Status
 
-Config loader implemented and tested (32 tests).
+Config loader implemented and tested (55 tests).
