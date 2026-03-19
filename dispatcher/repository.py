@@ -1,16 +1,17 @@
 """Repository abstraction layer for all DanClaw database access.
 
-Provides async CRUD methods for sessions, messages, and channel_bindings
-tables.  No other module should execute SQL directly — all DB access goes
-through this layer.
+Provides async CRUD methods for sessions, messages, channel_bindings, and
+telemetry_events tables.  No other module should execute SQL directly — all
+DB access goes through this layer.
 """
 
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 import aiosqlite
 
@@ -51,6 +52,17 @@ class ChannelBindingRow:
     session_id: str
     channel_type: str
     channel_ref: str
+    created_at: str
+
+
+@dataclass(frozen=True)
+class TelemetryEventRow:
+    """Represents a row in the telemetry_events table."""
+
+    id: int
+    event_type: str
+    payload: dict[str, Any]
+    timestamp: float
     created_at: str
 
 
@@ -361,6 +373,74 @@ class Repository:
         if row is None:
             return None
         return SessionRow(*row)
+
+    # ── Telemetry events ──────────────────────────────────────────────
+
+    async def save_telemetry_event(
+        self,
+        event_type: str,
+        payload: dict[str, Any],
+        timestamp: float,
+    ) -> TelemetryEventRow:
+        """Insert a telemetry event and return its row.
+
+        Parameters
+        ----------
+        event_type:
+            Category string for the event.
+        payload:
+            Arbitrary key-value data, stored as JSON text.
+        timestamp:
+            Unix timestamp when the event was recorded.
+        """
+        now = _utcnow()
+        payload_json = json.dumps(payload)
+        cursor = await self._db.execute(
+            "INSERT INTO telemetry_events (event_type, payload, timestamp, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (event_type, payload_json, timestamp, now),
+        )
+        await self._db.commit()
+        return TelemetryEventRow(
+            id=cursor.lastrowid,
+            event_type=event_type,
+            payload=payload,
+            timestamp=timestamp,
+            created_at=now,
+        )
+
+    async def get_telemetry_events(
+        self, *, event_type: Optional[str] = None
+    ) -> list[TelemetryEventRow]:
+        """Return telemetry events, optionally filtered by event_type.
+
+        Results are ordered by timestamp ascending.
+        """
+        if event_type is None:
+            sql = (
+                "SELECT id, event_type, payload, timestamp, created_at "
+                "FROM telemetry_events ORDER BY timestamp, id"
+            )
+            params: tuple = ()
+        else:
+            sql = (
+                "SELECT id, event_type, payload, timestamp, created_at "
+                "FROM telemetry_events WHERE event_type = ? ORDER BY timestamp, id"
+            )
+            params = (event_type,)
+
+        async with self._db.execute(sql, params) as cur:
+            rows = await cur.fetchall()
+        return [
+            TelemetryEventRow(
+                id=r[0],
+                event_type=r[1],
+                payload=json.loads(r[2]),
+                timestamp=r[3],
+                created_at=r[4],
+            )
+            for r in rows
+        ]
 
 
 # ── Helpers ──────────────────────────────────────────────────────────

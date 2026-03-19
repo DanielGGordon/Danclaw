@@ -1,8 +1,8 @@
 """SQLite schema initialisation for DanClaw.
 
 Provides ``init_db`` — an async function that creates the core tables
-(sessions, messages, channel_bindings) using ``CREATE TABLE IF NOT EXISTS``
-so it is safe to call on every startup.
+(sessions, messages, channel_bindings, telemetry_events) using
+``CREATE TABLE IF NOT EXISTS`` so it is safe to call on every startup.
 """
 
 from __future__ import annotations
@@ -38,6 +38,14 @@ CREATE TABLE IF NOT EXISTS channel_bindings (
     channel_ref  TEXT NOT NULL,
     created_at   TEXT NOT NULL,
     UNIQUE (session_id, channel_type, channel_ref)
+);
+
+CREATE TABLE IF NOT EXISTS telemetry_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type  TEXT NOT NULL,
+    payload     TEXT NOT NULL,
+    timestamp   REAL NOT NULL,
+    created_at  TEXT NOT NULL
 );
 """
 

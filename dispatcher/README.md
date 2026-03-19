@@ -5,12 +5,13 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
 ## Public Interface
 
 - `StandardMessage` — frozen dataclass representing the universal internal message format. Fields: `source`, `channel_ref`, `user_id`, `content`, `session_id` (optional). Includes `to_dict()` and `from_dict()` serialization helpers for JSON transport.
-- `init_db(db_path)` — async function that creates the SQLite schema (sessions, messages, channel_bindings tables) using `CREATE TABLE IF NOT EXISTS`. Safe to call on every startup.
+- `init_db(db_path)` — async function that creates the SQLite schema (sessions, messages, channel_bindings, telemetry_events tables) using `CREATE TABLE IF NOT EXISTS`. Safe to call on every startup.
 - `Repository(db)` — async repository abstraction layer for all database access. Takes an `aiosqlite.Connection`. Methods:
   - Sessions: `create_session`, `get_session`, `update_session_state`, `update_session_agent`, `update_session_attribution`, `list_sessions`
   - Messages: `save_message`, `get_messages_for_session`
   - Channel bindings: `add_channel_binding`, `remove_channel_binding`, `get_bindings_for_session`, `find_session_by_channel`
-- Row dataclasses: `SessionRow` (includes `attribution` field), `MessageRow`, `ChannelBindingRow` — frozen dataclasses for type-safe query results.
+- Row dataclasses: `SessionRow` (includes `attribution` field), `MessageRow`, `ChannelBindingRow`, `TelemetryEventRow` — frozen dataclasses for type-safe query results.
+  - Repository also provides telemetry methods: `save_telemetry_event(event_type, payload, timestamp)` and `get_telemetry_events(event_type=None)`.
 - `SessionManager(repo)` — high-level session lifecycle manager wrapping the repository. Methods:
   - `get_or_create_session(message, agent_name)` — finds a live session by explicit ID or channel binding, or creates a new one
   - `get_session(session_id)` — retrieves a session by ID
@@ -47,10 +48,15 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
     - `socket_path` — property returning the configured socket path
     - `is_serving` — property returning whether the server is currently active
 - `TelemetryEvent` — frozen dataclass representing a single telemetry event. Fields: `event_type` (str), `payload` (dict), `timestamp` (float, Unix epoch).
-- `TelemetryCollector` — in-memory telemetry event collector. Methods:
-  - `record(event_type, payload=None, *, timestamp=None) -> TelemetryEvent` — records an event and returns it. Auto-generates a timestamp if not provided.
+- `TelemetryCollector` — telemetry event collector with pluggable sinks. Events are always stored in-memory; additional sinks can be registered via `add_sink()`. Methods:
+  - `record(event_type, payload=None, *, timestamp=None) -> TelemetryEvent` — records an event, stores it in-memory, and writes it to all registered sinks. Auto-generates a timestamp if not provided.
   - `events` — property returning a copy of the recorded events list.
-  - `clear()` — removes all recorded events.
+  - `sinks` — property returning a copy of the registered sinks list.
+  - `add_sink(sink)` — registers a sink to receive future events.
+  - `flush()` — async method that flushes all async sinks (e.g. `DbSink`).
+  - `clear()` — removes all recorded in-memory events.
+- `JsonlSink(path)` — telemetry sink that appends each event as a JSON line to a file. Created on first write.
+- `DbSink(repo)` — telemetry sink that stores events in the `telemetry_events` DB table via the Repository. Events are buffered and persisted on `flush()`.
 - `default_collector` — module-level `TelemetryCollector` instance available via `dispatcher.telemetry.default_collector`.
 - `requires_approval(config, channel, user_id)` — returns ``True`` if any applicable permission layer (channel or user) has ``approval_required=True``. When the channel has ``override=True``, only the channel's flag is considered. This is a resolved boolean checkpoint; the actual "wait for approval" flow will be built when the executor is real.
 - Returns response messages to the calling listener
