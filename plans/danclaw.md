@@ -240,7 +240,7 @@ An admin channel/agent that can modify the system's own code, commit, push to gi
 - [x] Admin agent defined in config with full tool access and no approval gates
 - [x] Admin agent can execute git operations (add, commit, push)
 - [x] Deploy script: pulls latest from git, rebuilds Docker images if needed, restarts affected services
-- [ ] Deploy triggered by the agent via a tool script
+- [x] Deploy triggered by the agent via a tool script
 - [ ] Admin channel configured with no approval override
 - [ ] Telemetry events emitted for deploy actions
 - [ ] Non-admin users/channels cannot trigger deploy
