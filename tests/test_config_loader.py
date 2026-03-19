@@ -510,3 +510,100 @@ def test_load_real_config():
     cfg = load_config(config_path, personas_dir=personas_dir)
     assert len(cfg.agents) >= 1
     assert cfg.agents[0].name == "default"
+
+
+# ── AgentConfig timeout field ────────────────────────────────────────
+
+
+class TestAgentConfigTimeout:
+    def test_default_timeout_is_120(self):
+        agent = AgentConfig(
+            name="a", persona="default", backend_preference=["claude"],
+        )
+        assert agent.timeout == 120
+
+    def test_custom_timeout(self):
+        agent = AgentConfig(
+            name="a", persona="default", backend_preference=["claude"],
+            timeout=60,
+        )
+        assert agent.timeout == 60
+
+    def test_timeout_loaded_from_json(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "fast",
+                "persona": "default",
+                "backend_preference": ["claude"],
+                "timeout": 30,
+            }],
+        })
+        cfg = load_config(
+            tmp_project.config / "danclaw.json",
+            personas_dir=tmp_project.personas,
+            tools_dir=tmp_project.tools,
+        )
+        assert cfg.agents[0].timeout == 30
+
+    def test_timeout_defaults_to_120_when_omitted(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "default",
+                "persona": "default",
+                "backend_preference": ["claude"],
+            }],
+        })
+        cfg = load_config(
+            tmp_project.config / "danclaw.json",
+            personas_dir=tmp_project.personas,
+            tools_dir=tmp_project.tools,
+        )
+        assert cfg.agents[0].timeout == 120
+
+    def test_timeout_zero_raises_config_error(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "bad",
+                "persona": "default",
+                "backend_preference": ["claude"],
+                "timeout": 0,
+            }],
+        })
+        with pytest.raises(ConfigError, match="timeout.*positive integer"):
+            load_config(
+                tmp_project.config / "danclaw.json",
+                personas_dir=tmp_project.personas,
+                tools_dir=tmp_project.tools,
+            )
+
+    def test_timeout_negative_raises_config_error(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "bad",
+                "persona": "default",
+                "backend_preference": ["claude"],
+                "timeout": -10,
+            }],
+        })
+        with pytest.raises(ConfigError, match="timeout.*positive integer"):
+            load_config(
+                tmp_project.config / "danclaw.json",
+                personas_dir=tmp_project.personas,
+                tools_dir=tmp_project.tools,
+            )
+
+    def test_timeout_string_raises_config_error(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "bad",
+                "persona": "default",
+                "backend_preference": ["claude"],
+                "timeout": "fast",
+            }],
+        })
+        with pytest.raises(ConfigError, match="timeout.*positive integer"):
+            load_config(
+                tmp_project.config / "danclaw.json",
+                personas_dir=tmp_project.personas,
+                tools_dir=tmp_project.tools,
+            )

@@ -109,10 +109,16 @@ class ClaudeExecutor:
     claude_bin:
         Path or name of the ``claude`` CLI binary.  Defaults to
         ``"claude"``.
+    timeout:
+        Maximum seconds to wait for the subprocess.  ``None`` means
+        no timeout.  Defaults to ``None``.
     """
 
-    def __init__(self, claude_bin: str = "claude") -> None:
+    def __init__(
+        self, claude_bin: str = "claude", *, timeout: int | None = None,
+    ) -> None:
         self._claude_bin = claude_bin
+        self._timeout = timeout
 
     async def execute(
         self,
@@ -147,7 +153,16 @@ class ClaudeExecutor:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await proc.communicate()
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=self._timeout,
+            )
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise TimeoutError(
+                f"claude subprocess timed out after {self._timeout}s"
+            )
 
         if proc.returncode != 0:
             stderr_text = stderr.decode(errors="replace").strip()
@@ -171,10 +186,16 @@ class CodexExecutor:
     codex_bin:
         Path or name of the ``codex`` CLI binary.  Defaults to
         ``"codex"``.
+    timeout:
+        Maximum seconds to wait for the subprocess.  ``None`` means
+        no timeout.  Defaults to ``None``.
     """
 
-    def __init__(self, codex_bin: str = "codex") -> None:
+    def __init__(
+        self, codex_bin: str = "codex", *, timeout: int | None = None,
+    ) -> None:
         self._codex_bin = codex_bin
+        self._timeout = timeout
 
     async def execute(
         self,
@@ -199,7 +220,16 @@ class CodexExecutor:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await proc.communicate()
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=self._timeout,
+            )
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise TimeoutError(
+                f"codex subprocess timed out after {self._timeout}s"
+            )
 
         if proc.returncode != 0:
             stderr_text = stderr.decode(errors="replace").strip()
@@ -220,7 +250,11 @@ _BACKEND_REGISTRY: dict[str, type] = {
 }
 
 
-def build_executor(backend_preference: list[str]) -> FallbackExecutor:
+def build_executor(
+    backend_preference: list[str],
+    *,
+    timeout: int | None = None,
+) -> FallbackExecutor:
     """Build a :class:`FallbackExecutor` from a list of backend names.
 
     Maps each name in *backend_preference* to the corresponding executor
@@ -233,6 +267,10 @@ def build_executor(backend_preference: list[str]) -> FallbackExecutor:
         Ordered list of backend names (e.g. ``["claude", "codex"]``).
         Must be non-empty.  Each name must be a key in the backend
         registry (``"claude"``, ``"codex"``, ``"mock"``).
+    timeout:
+        Maximum seconds each executor may run.  Passed through to
+        :class:`ClaudeExecutor` and :class:`CodexExecutor`.  ``None``
+        means no timeout.  Defaults to ``None``.
 
     Returns
     -------
@@ -248,6 +286,9 @@ def build_executor(backend_preference: list[str]) -> FallbackExecutor:
     if not backend_preference:
         raise ValueError("backend_preference must be a non-empty list")
 
+    # Backends that accept a timeout keyword
+    _TIMEOUT_BACKENDS = {"claude", "codex"}
+
     executors = []
     for name in backend_preference:
         cls = _BACKEND_REGISTRY.get(name)
@@ -257,7 +298,10 @@ def build_executor(backend_preference: list[str]) -> FallbackExecutor:
                 f"Unknown backend '{name}'. "
                 f"Known backends: {known}"
             )
-        executors.append(cls())
+        if name in _TIMEOUT_BACKENDS and timeout is not None:
+            executors.append(cls(timeout=timeout))
+        else:
+            executors.append(cls())
     return FallbackExecutor(executors)
 
 

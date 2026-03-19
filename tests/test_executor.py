@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -520,3 +521,136 @@ class TestBuildExecutorErrors:
     def test_mixed_valid_and_invalid_raises(self):
         with pytest.raises(ValueError, match="Unknown backend 'bad'"):
             build_executor(["claude", "bad"])
+
+
+# ── Timeout tests ────────────────────────────────────────────────────
+
+class TestClaudeExecutorTimeout:
+    @pytest.mark.asyncio
+    @patch("dispatcher.executor.asyncio.create_subprocess_exec")
+    async def test_timeout_raises_timeout_error(self, mock_exec):
+        from unittest.mock import MagicMock
+
+        proc = AsyncMock()
+        proc.kill = MagicMock()
+        proc.wait = AsyncMock()
+        mock_exec.return_value = proc
+
+        executor = ClaudeExecutor(timeout=5)
+        with patch(
+            "dispatcher.executor.asyncio.wait_for",
+            new_callable=AsyncMock,
+            side_effect=asyncio.TimeoutError(),
+        ):
+            with pytest.raises(TimeoutError, match="claude subprocess timed out"):
+                await executor.execute(_make_message("slow request"))
+
+        proc.kill.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("dispatcher.executor.asyncio.create_subprocess_exec")
+    async def test_no_timeout_by_default(self, mock_exec):
+        """When timeout is None, wait_for should pass timeout=None."""
+        proc = _make_proc_mock(stdout=b"ok")
+        mock_exec.return_value = proc
+
+        executor = ClaudeExecutor()
+        assert executor._timeout is None
+
+        with patch("dispatcher.executor.asyncio.wait_for", new_callable=AsyncMock) as mock_wf:
+            mock_wf.return_value = (b"ok", b"")
+            await executor.execute(_make_message("hi"))
+            mock_wf.assert_called_once()
+            _, kwargs = mock_wf.call_args
+            assert kwargs["timeout"] is None
+
+    @pytest.mark.asyncio
+    @patch("dispatcher.executor.asyncio.create_subprocess_exec")
+    async def test_timeout_value_passed_to_wait_for(self, mock_exec):
+        proc = _make_proc_mock(stdout=b"ok")
+        mock_exec.return_value = proc
+
+        executor = ClaudeExecutor(timeout=30)
+
+        with patch("dispatcher.executor.asyncio.wait_for", new_callable=AsyncMock) as mock_wf:
+            mock_wf.return_value = (b"ok", b"")
+            await executor.execute(_make_message("hi"))
+            _, kwargs = mock_wf.call_args
+            assert kwargs["timeout"] == 30
+
+
+class TestCodexExecutorTimeout:
+    @pytest.mark.asyncio
+    @patch("dispatcher.executor.asyncio.create_subprocess_exec")
+    async def test_timeout_raises_timeout_error(self, mock_exec):
+        from unittest.mock import MagicMock
+
+        proc = AsyncMock()
+        proc.kill = MagicMock()
+        proc.wait = AsyncMock()
+        mock_exec.return_value = proc
+
+        executor = CodexExecutor(timeout=5)
+        with patch(
+            "dispatcher.executor.asyncio.wait_for",
+            new_callable=AsyncMock,
+            side_effect=asyncio.TimeoutError(),
+        ):
+            with pytest.raises(TimeoutError, match="codex subprocess timed out"):
+                await executor.execute(_make_message("slow request"))
+
+        proc.kill.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("dispatcher.executor.asyncio.create_subprocess_exec")
+    async def test_no_timeout_by_default(self, mock_exec):
+        proc = _make_proc_mock(stdout=b"ok")
+        mock_exec.return_value = proc
+
+        executor = CodexExecutor()
+        assert executor._timeout is None
+
+
+class TestFallbackExecutorTimeoutFallback:
+    @pytest.mark.asyncio
+    async def test_timeout_error_triggers_fallback(self):
+        """TimeoutError from the first executor should cause fallback."""
+        failing = MockExecutor()
+
+        async def _timeout(*a, **kw):
+            raise TimeoutError("timed out")
+
+        failing.execute = _timeout
+
+        backup = MockExecutor(fixed_response="backup response")
+        executor = FallbackExecutor([failing, backup])
+        result = await executor.execute(_make_message("hi"))
+        assert result.content == "backup response"
+
+
+class TestBuildExecutorTimeout:
+    def test_timeout_passed_to_claude_executor(self):
+        executor = build_executor(["claude"], timeout=60)
+        assert isinstance(executor._executors[0], ClaudeExecutor)
+        assert executor._executors[0]._timeout == 60
+
+    def test_timeout_passed_to_codex_executor(self):
+        executor = build_executor(["codex"], timeout=45)
+        assert isinstance(executor._executors[0], CodexExecutor)
+        assert executor._executors[0]._timeout == 45
+
+    def test_timeout_not_passed_to_mock(self):
+        executor = build_executor(["mock"], timeout=60)
+        assert isinstance(executor._executors[0], MockExecutor)
+        # MockExecutor has no _timeout attribute
+        assert not hasattr(executor._executors[0], "_timeout")
+
+    def test_default_timeout_is_none(self):
+        executor = build_executor(["claude"])
+        assert executor._executors[0]._timeout is None
+
+    def test_mixed_backends_with_timeout(self):
+        executor = build_executor(["claude", "codex", "mock"], timeout=90)
+        assert executor._executors[0]._timeout == 90
+        assert executor._executors[1]._timeout == 90
+        assert not hasattr(executor._executors[2], "_timeout")
