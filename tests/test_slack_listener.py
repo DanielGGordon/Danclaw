@@ -663,7 +663,8 @@ class TestThreadedReply:
     def test_handle_message_no_reply_when_dispatcher_returns_none(self, listener):
         """_handle_message does not call say when dispatcher returns None."""
         event = {
-            "channel": "C123",
+            "channel": "D123",
+            "channel_type": "im",
             "user": "U456",
             "text": "hello",
             "ts": "1234567890.123456",
@@ -678,7 +679,8 @@ class TestThreadedReply:
     def test_handle_message_no_reply_on_dispatcher_error(self, listener):
         """_handle_message does not call say when dispatcher raises."""
         event = {
-            "channel": "C123",
+            "channel": "D123",
+            "channel_type": "im",
             "user": "U456",
             "text": "hello",
             "ts": "1234567890.123456",
