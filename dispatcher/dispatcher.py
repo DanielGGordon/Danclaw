@@ -227,12 +227,19 @@ class Dispatcher:
             agent = session_agent
             agent_name = agent.name
 
-        # 4. Resolve permissions for the channel + user
+        # 4. Resolve permissions for the channel + user.
+        #    When the active agent has a dedicated channel entry in the
+        #    permissions config, use that channel so agent-specific rules
+        #    (e.g. the admin channel's no-approval policy) take effect.
+        perm_channel = message.source
+        if agent_name in self._config.permissions.channels:
+            perm_channel = agent_name
+
         allowed_tools = resolve_permissions(
-            self._config.permissions, message.source, message.user_id,
+            self._config.permissions, perm_channel, message.user_id,
         )
         approval_needed = requires_approval(
-            self._config.permissions, message.source, message.user_id,
+            self._config.permissions, perm_channel, message.user_id,
         )
         self._last_resolved_permissions = allowed_tools
 
