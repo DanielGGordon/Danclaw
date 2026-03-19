@@ -45,11 +45,15 @@ DEFAULT_SOCKET_PATH = os.environ.get(
 USER_ID = os.environ.get("USER", "terminal-user")
 
 
-def _build_message(content: str, session_id: str | None = None) -> dict:
+def _build_message(
+    content: str,
+    channel_ref: str,
+    session_id: str | None = None,
+) -> dict:
     """Build a StandardMessage dict for the terminal source."""
     msg = {
         "source": "terminal",
-        "channel_ref": f"cli-{uuid.uuid4().hex[:8]}",
+        "channel_ref": channel_ref,
         "user_id": USER_ID,
         "content": content,
     }
@@ -258,14 +262,7 @@ def _chat_loop(
             if not user_input.strip():
                 continue
 
-            msg = {
-                "source": "terminal",
-                "channel_ref": channel_ref,
-                "user_id": USER_ID,
-                "content": user_input,
-            }
-            if session_id is not None:
-                msg["session_id"] = session_id
+            msg = _build_message(user_input, channel_ref, session_id)
 
             # Stop the reader while we do a synchronous send/recv
             stop_event.set()
