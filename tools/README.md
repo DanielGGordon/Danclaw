@@ -59,6 +59,7 @@ Also runnable as a CLI: `python -m tools.deploy --cwd /path [--no-rebuild]`
 Wrapped tools:
 - **Obsidian**: `read_file`, `write_file`, `search_files`
 - **Git operations**: `git_add`, `git_commit`, `git_push`
+- **Deploy**: `deploy`
 
 Events are emitted on both success and failure (exceptions are re-raised after recording).
 

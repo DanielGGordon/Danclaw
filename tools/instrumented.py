@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from dispatcher.telemetry import TelemetryCollector
+from tools.deploy import deploy as _deploy
 from tools.git_ops import git_add as _git_add
 from tools.git_ops import git_commit as _git_commit
 from tools.git_ops import git_push as _git_push
@@ -140,6 +141,39 @@ def search_files(
     duration = time.monotonic() - start
     _record_event(
         telemetry, "obsidian_search", args,
+        success=True, duration=duration,
+    )
+    return result
+
+
+# ── Deploy ─────────────────────────────────────────────────────────────
+
+
+def deploy(
+    *,
+    cwd: str | Path,
+    rebuild: bool = True,
+    telemetry: TelemetryCollector,
+) -> str:
+    """Execute deploy sequence with telemetry.
+
+    Wraps :func:`tools.deploy.deploy`, recording a
+    ``tool_execution`` event on both success and failure.
+    """
+    args: dict[str, Any] = {"cwd": str(cwd), "rebuild": rebuild}
+    start = time.monotonic()
+    try:
+        result = _deploy(cwd=cwd, rebuild=rebuild)
+    except Exception as exc:
+        duration = time.monotonic() - start
+        _record_event(
+            telemetry, "deploy", args,
+            success=False, duration=duration, error=str(exc),
+        )
+        raise
+    duration = time.monotonic() - start
+    _record_event(
+        telemetry, "deploy", args,
         success=True, duration=duration,
     )
     return result
