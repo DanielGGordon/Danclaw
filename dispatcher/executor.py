@@ -1,17 +1,21 @@
-"""AI executor abstraction and mocked implementation.
+"""AI executor abstraction with mock and Claude implementations.
 
-Defines the executor interface and a MockExecutor that returns canned
-responses.  The real executor (Phase 6) will call ``claude -p`` and
-``codex`` as subprocesses; the mock allows the full dispatcher pipeline
-to be developed and tested without external dependencies.
+Defines the executor interface, a MockExecutor that returns canned
+responses, and a ClaudeExecutor that calls ``claude -p`` as an async
+subprocess with ``--resume`` for session persistence and
+``--system-prompt`` for persona injection.
 """
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from dataclasses import dataclass
 from typing import Protocol
 
 from dispatcher.models import StandardMessage
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -91,3 +95,65 @@ class MockExecutor:
         else:
             content = f"mock response: {message.content}"
         return ExecutorResult(content=content, backend="mock")
+
+
+class ClaudeExecutor:
+    """Executor that calls ``claude -p`` as an async subprocess.
+
+    Runs ``claude -p "<message>" --resume <session_id>`` and optionally
+    passes the agent persona via ``--system-prompt``.  Stdout is captured
+    as the response content.
+
+    Parameters
+    ----------
+    claude_bin:
+        Path or name of the ``claude`` CLI binary.  Defaults to
+        ``"claude"``.
+    """
+
+    def __init__(self, claude_bin: str = "claude") -> None:
+        self._claude_bin = claude_bin
+
+    async def execute(
+        self,
+        message: StandardMessage,
+        *,
+        persona: str | None = None,
+        allowed_tools: frozenset[str] | None = None,
+    ) -> ExecutorResult:
+        """Execute *message* via the ``claude`` CLI subprocess.
+
+        The session ID from *message* is used with ``--resume`` to
+        maintain conversation context across calls.  If *persona* is
+        provided, it is passed as ``--system-prompt``.
+
+        Raises
+        ------
+        RuntimeError
+            If the subprocess exits with a non-zero return code.
+        """
+        cmd = [self._claude_bin, "-p", message.content]
+
+        if message.session_id:
+            cmd.extend(["--resume", message.session_id])
+
+        if persona:
+            cmd.extend(["--system-prompt", persona])
+
+        logger.info("Running claude subprocess: %s", cmd)
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+
+        if proc.returncode != 0:
+            stderr_text = stderr.decode(errors="replace").strip()
+            raise RuntimeError(
+                f"claude exited with code {proc.returncode}: {stderr_text}"
+            )
+
+        content = stdout.decode(errors="replace").strip()
+        return ExecutorResult(content=content, backend="claude")

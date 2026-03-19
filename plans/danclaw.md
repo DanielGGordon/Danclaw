@@ -122,7 +122,7 @@ The three-layer permission resolver. Channel permissions define the baseline. Us
 - [x] Override flag: when true, user permissions are ignored — only channel permissions apply
 - [x] Approval gates: configurable per channel/persona/user — when enabled, high-impact actions require confirmation
 - [x] Dispatcher checks permissions before invoking an agent — blocked requests return an error message to the user
-- [ ] Unit tests covering all permission combinations: channel-only, channel+user, override=true, override=false, approval required vs not
+- [x] Unit tests covering all permission combinations: channel-only, channel+user, override=true, override=false, approval required vs not
 
 ---
 
@@ -136,7 +136,7 @@ Replace the mocked executor with real `claude -p` and `codex` invocations. The e
 
 ### Acceptance criteria
 
-- [ ] Executor calls `claude -p --resume <session-id>` with the agent's persona as system prompt
+- [x] Executor calls `claude -p --resume <session-id>` with the agent's persona as system prompt
 - [ ] Executor calls `codex` as fallback when claude fails (timeout, non-zero exit, credit error)
 - [ ] Backend preference order read from agent config (default: `["claude", "codex"]`)
 - [ ] Timeout configurable per agent
@@ -247,22 +247,6 @@ An admin channel/agent that can modify the system's own code, commit, push to gi
 
 ---
 
-## Phase 12: Real-Time Voice Calls
+## Future Work
 
-**User stories**: 21, 22
-
-### What to build
-
-A thick voice listener that handles real-time phone calls. Twilio Media Streams provides WebSocket audio. ElevenLabs real-time API handles STT and TTS with the owner's cloned voice. The LLM is called directly (API or subprocess — benchmark to decide) for minimum latency. The dispatcher is only involved at call setup (session, permissions, persona) and teardown (transcript logging).
-
-### Acceptance criteria
-
-- [ ] Twilio webhook receives inbound calls, initiates Media Streams WebSocket
-- [ ] Voice listener calls dispatcher once at call start for session creation, permission resolution, and persona selection
-- [ ] During call: audio streams through Twilio Media Streams → ElevenLabs real-time STT → LLM → ElevenLabs TTS → back to caller
-- [ ] Sub-second latency target for the STT → LLM → TTS loop (benchmark and document actual latency)
-- [ ] ElevenLabs voice cloning configured with owner's voice profile
-- [ ] Full transcript logged to session store at call end
-- [ ] Telemetry events for call start, call end, and any errors
-- [ ] Tailscale Funnel (or equivalent) configured for Twilio's inbound webhook
-- [ ] Caller experience feels like a natural conversation, not a chatbot with pauses
+- **Real-time voice calls** (user stories 21, 22): Twilio Media Streams + ElevenLabs real-time STT/TTS with cloned voice. Deferred — revisit once the core platform is stable and latency benchmarks can be run against real infrastructure.

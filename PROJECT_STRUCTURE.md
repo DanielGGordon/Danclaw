@@ -28,7 +28,7 @@ danclaw/
 │   ├── __main__.py           # Entry point: config loading, DB init, SocketServer startup, signal handling
 │   ├── database.py           # SQLite schema init (sessions, messages, channel_bindings)
 │   ├── dispatcher.py         # Core Dispatcher class: routes messages through session → executor → storage pipeline
-│   ├── executor.py           # AI executor protocol, ExecutorResult, and MockExecutor (canned responses)
+│   ├── executor.py           # AI executor protocol, ExecutorResult, MockExecutor (canned responses), and ClaudeExecutor (claude -p subprocess)
 │   ├── models.py             # StandardMessage frozen dataclass with serialization helpers
 │   ├── permissions.py        # Permission resolver: computes effective tool sets for channel + user pairs
 │   ├── repository.py         # Async repository abstraction for all DB access (CRUD on sessions, messages, channel_bindings)
