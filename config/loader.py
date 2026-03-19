@@ -15,10 +15,13 @@ class ChannelPermissions:
         allowed_tools: Tools available on this channel.
         override: When True, user permissions are ignored — only channel
             permissions apply.
+        approval_required: When True, high-impact actions on this channel
+            require confirmation before execution.
     """
 
     allowed_tools: list[str] = field(default_factory=list)
     override: bool = False
+    approval_required: bool = False
 
 
 @dataclass(frozen=True)
@@ -28,9 +31,12 @@ class UserPermissions:
     Attributes:
         additional_tools: Extra tools granted to this user, added on top of
             the channel baseline (unless the channel override flag is set).
+        approval_required: When True, high-impact actions by this user
+            require confirmation before execution.
     """
 
     additional_tools: list[str] = field(default_factory=list)
+    approval_required: bool = False
 
 
 @dataclass(frozen=True)
@@ -195,9 +201,16 @@ def _parse_permissions(raw: object) -> PermissionsConfig:
                 f"permissions.channels['{ch_name}']: 'override' must be a boolean"
             )
 
+        approval_required = ch_data.get("approval_required", False)
+        if not isinstance(approval_required, bool):
+            raise ConfigError(
+                f"permissions.channels['{ch_name}']: 'approval_required' must be a boolean"
+            )
+
         channels[ch_name] = ChannelPermissions(
             allowed_tools=list(allowed_tools),
             override=override,
+            approval_required=approval_required,
         )
 
     users_raw = raw.get("users", {})
@@ -225,8 +238,15 @@ def _parse_permissions(raw: object) -> PermissionsConfig:
                     "'additional_tools' entries must be non-empty strings"
                 )
 
+        approval_required = user_data.get("approval_required", False)
+        if not isinstance(approval_required, bool):
+            raise ConfigError(
+                f"permissions.users['{user_id}']: 'approval_required' must be a boolean"
+            )
+
         users[user_id] = UserPermissions(
             additional_tools=list(additional_tools),
+            approval_required=approval_required,
         )
 
     return PermissionsConfig(channels=channels, users=users)

@@ -325,4 +325,87 @@ def test_load_real_config_has_permissions():
     assert "terminal" in cfg.permissions.channels
     assert "slack" in cfg.permissions.channels
     assert cfg.permissions.channels["slack"].override is True
+    assert cfg.permissions.channels["slack"].approval_required is True
     assert "dan" in cfg.permissions.users
+
+
+# ── Approval required: channel ────────────────────────────────────────
+
+
+def test_channel_approval_required_parsed(tmp_project):
+    """Channel approval_required is parsed correctly."""
+    path = tmp_project.write_config(
+        _base_config(
+            permissions={
+                "channels": {
+                    "slack": {
+                        "allowed_tools": ["git"],
+                        "approval_required": True,
+                    },
+                },
+            }
+        )
+    )
+    cfg = load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
+    assert cfg.permissions.channels["slack"].approval_required is True
+
+
+def test_channel_approval_required_defaults_false(tmp_project):
+    """Channel approval_required defaults to False when omitted."""
+    path = tmp_project.write_config(
+        _base_config(permissions={"channels": {"slack": {}}})
+    )
+    cfg = load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
+    assert cfg.permissions.channels["slack"].approval_required is False
+
+
+def test_channel_approval_required_not_bool(tmp_project):
+    """Non-boolean approval_required on channel raises ConfigError."""
+    path = tmp_project.write_config(
+        _base_config(
+            permissions={"channels": {"slack": {"approval_required": "yes"}}}
+        )
+    )
+    with pytest.raises(ConfigError, match="'approval_required' must be a boolean"):
+        load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
+
+
+# ── Approval required: user ───────────────────────────────────────────
+
+
+def test_user_approval_required_parsed(tmp_project):
+    """User approval_required is parsed correctly."""
+    path = tmp_project.write_config(
+        _base_config(
+            permissions={
+                "users": {
+                    "dan": {
+                        "additional_tools": ["deploy"],
+                        "approval_required": True,
+                    },
+                },
+            }
+        )
+    )
+    cfg = load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
+    assert cfg.permissions.users["dan"].approval_required is True
+
+
+def test_user_approval_required_defaults_false(tmp_project):
+    """User approval_required defaults to False when omitted."""
+    path = tmp_project.write_config(
+        _base_config(permissions={"users": {"dan": {}}})
+    )
+    cfg = load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
+    assert cfg.permissions.users["dan"].approval_required is False
+
+
+def test_user_approval_required_not_bool(tmp_project):
+    """Non-boolean approval_required on user raises ConfigError."""
+    path = tmp_project.write_config(
+        _base_config(
+            permissions={"users": {"dan": {"approval_required": 1}}}
+        )
+    )
+    with pytest.raises(ConfigError, match="'approval_required' must be a boolean"):
+        load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)

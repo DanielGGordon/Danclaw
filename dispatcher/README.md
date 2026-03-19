@@ -35,6 +35,7 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
     - `stop()` — stop accepting connections and remove the socket file
     - `socket_path` — property returning the configured socket path
     - `is_serving` — property returning whether the server is currently active
+- `requires_approval(config, channel, user_id)` — returns ``True`` if any applicable permission layer (channel or user) has ``approval_required=True``. When the channel has ``override=True``, only the channel's flag is considered. This is a resolved boolean checkpoint; the actual "wait for approval" flow will be built when the executor is real.
 - Returns response messages to the calling listener
 
 ## Relationship to Other Modules

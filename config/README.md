@@ -17,8 +17,8 @@ Configuration loading and validation. Reads the JSON config file that defines ag
   - `get_agent(name)` — Looks up an agent by name. Returns `None` if not found.
 - `AgentConfig` — Frozen dataclass: `name`, `persona`, `backend_preference`, `allowed_tools`.
 - `PermissionsConfig` — Frozen dataclass: `channels: dict[str, ChannelPermissions]`, `users: dict[str, UserPermissions]`. Defaults to empty dicts when omitted from config.
-- `ChannelPermissions` — Frozen dataclass: `allowed_tools: list[str]`, `override: bool`. The `override` flag, when True, locks the channel to channel-only permissions (user permissions are ignored).
-- `UserPermissions` — Frozen dataclass: `additional_tools: list[str]`. Extra tools granted to a user, additive on top of the channel baseline.
+- `ChannelPermissions` — Frozen dataclass: `allowed_tools: list[str]`, `override: bool`, `approval_required: bool`. The `override` flag, when True, locks the channel to channel-only permissions (user permissions are ignored). The `approval_required` flag, when True, requires confirmation before high-impact actions on this channel.
+- `UserPermissions` — Frozen dataclass: `additional_tools: list[str]`, `approval_required: bool`. Extra tools granted to a user, additive on top of the channel baseline. The `approval_required` flag, when True, requires confirmation before high-impact actions by this user.
 - `ConfigError` — Exception raised for invalid or missing config.
 
 ## Validation Rules
@@ -32,8 +32,8 @@ Configuration loading and validation. Reads the JSON config file that defines ag
 - All missing personas and tools are collected and reported in a single error message.
 - `listeners` must be a dict (defaults to `{}` if omitted).
 - `permissions` is optional (defaults to empty channels/users). When present:
-  - `permissions.channels` maps channel names to objects with `allowed_tools` (list of strings, default `[]`) and `override` (boolean, default `false`).
-  - `permissions.users` maps user identifiers to objects with `additional_tools` (list of strings, default `[]`).
+  - `permissions.channels` maps channel names to objects with `allowed_tools` (list of strings, default `[]`), `override` (boolean, default `false`), and `approval_required` (boolean, default `false`).
+  - `permissions.users` maps user identifiers to objects with `additional_tools` (list of strings, default `[]`) and `approval_required` (boolean, default `false`).
 
 ## Relationship to Other Modules
 
