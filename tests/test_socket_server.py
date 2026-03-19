@@ -472,3 +472,47 @@ async def test_get_history_message_fields(server, socket_path):
     assert "source" in msg
     assert "user_id" in msg
     assert "created_at" in msg
+
+
+# ── Fanout channels in response ──────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_response_includes_fanout_channels(server, socket_path):
+    """The dispatch response JSON includes a fanout_channels list."""
+    resp = await _send_recv(socket_path, _msg_dict(content="ping"))
+    assert resp["ok"] is True
+    assert "fanout_channels" in resp
+    assert isinstance(resp["fanout_channels"], list)
+
+
+@pytest.mark.asyncio
+async def test_response_fanout_channels_empty_for_single_binding(
+    server, socket_path,
+):
+    """With only one channel bound, fanout_channels is empty."""
+    resp = await _send_recv(socket_path, _msg_dict(content="ping"))
+    assert resp["ok"] is True
+    assert resp["fanout_channels"] == []
+
+
+@pytest.mark.asyncio
+async def test_response_fanout_channels_with_multiple_bindings(
+    server, socket_path, db,
+):
+    """fanout_channels lists non-source channels bound to the session."""
+    # Create a session
+    r1 = await _send_recv(socket_path, _msg_dict(content="first"))
+    assert r1["ok"] is True
+    session_id = r1["session_id"]
+
+    # Manually bind a second channel
+    repo = Repository(db)
+    await repo.add_channel_binding(session_id, "slack", "C123-ts456")
+
+    # Dispatch again from terminal — fanout should include the slack channel
+    r2 = await _send_recv(socket_path, _msg_dict(content="second"))
+    assert r2["ok"] is True
+    assert r2["session_id"] == session_id
+    assert "C123-ts456" in r2["fanout_channels"]
+    assert "tty1" not in r2["fanout_channels"]

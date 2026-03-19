@@ -179,7 +179,7 @@ A session can be bound to multiple channels simultaneously. When you `agent atta
 
 - [x] A session can have multiple channel bindings (e.g., both a Slack thread and a terminal)
 - [x] `agent attach <session-id>` adds a terminal binding to an existing session
-- [ ] Messages sent from terminal are delivered to the agent and the response appears in both terminal and Slack thread
+- [x] Messages sent from terminal are delivered to the agent and the response appears in both terminal and Slack thread
 - [ ] Messages sent from Slack are delivered to the agent and the response appears in both Slack thread and terminal
 - [ ] Attribution: terminal messages appear as the bot in Slack by default
 - [ ] Attribution formatting is configurable per session
