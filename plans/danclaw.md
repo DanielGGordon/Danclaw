@@ -199,10 +199,10 @@ The first real tool: read and write files in an Obsidian vault. Registered per-a
 
 - [x] Obsidian tool script(s) in `tools/`: read file, write file, search/list files in vault
 - [x] Vault path configurable in JSON config
-- [ ] Tool registered in agent config and only available to agents that have it in their allowed tools list
-- [ ] Permission-gated: a user without Obsidian tool access cannot trigger it
-- [ ] End-to-end: Slack message → agent reads an Obsidian note → responds with content in Slack thread
-- [ ] End-to-end: Slack message → agent creates/updates an Obsidian note → confirms in Slack thread
+- [x] Tool registered in agent config and only available to agents that have it in their allowed tools list
+- [x] Permission-gated: a user without Obsidian tool access cannot trigger it
+- [x] End-to-end: Slack message → agent reads an Obsidian note → responds with content in Slack thread
+- [x] End-to-end: Slack message → agent creates/updates an Obsidian note → confirms in Slack thread
 - [ ] Tool execution emits telemetry events
 
 ---
