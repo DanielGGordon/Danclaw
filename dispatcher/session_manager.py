@@ -161,6 +161,36 @@ class SessionManager:
             session_id, channel_type, channel_ref,
         )
 
+    async def remove_binding(
+        self,
+        session_id: str,
+        channel_ref: str,
+    ) -> bool:
+        """Remove a channel binding from a session.
+
+        Parameters
+        ----------
+        session_id:
+            ID of the session to unbind.
+        channel_ref:
+            The channel reference to remove.
+
+        Returns
+        -------
+        bool
+            ``True`` if the binding was removed, ``False`` if it did
+            not exist.
+
+        Raises
+        ------
+        KeyError
+            If no session with *session_id* exists.
+        """
+        session = await self._repo.get_session(session_id)
+        if session is None:
+            raise KeyError(f"Session {session_id!r} not found")
+        return await self._repo.remove_channel_binding(session_id, channel_ref)
+
     async def get_bindings(
         self, session_id: str,
     ) -> list[ChannelBindingRow]:

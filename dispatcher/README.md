@@ -9,11 +9,14 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
 - `Repository(db)` — async repository abstraction layer for all database access. Takes an `aiosqlite.Connection`. Methods:
   - Sessions: `create_session`, `get_session`, `update_session_state`, `update_session_agent`, `update_session_attribution`, `list_sessions`
   - Messages: `save_message`, `get_messages_for_session`
-  - Channel bindings: `add_channel_binding`, `get_bindings_for_session`, `find_session_by_channel`
+  - Channel bindings: `add_channel_binding`, `remove_channel_binding`, `get_bindings_for_session`, `find_session_by_channel`
 - Row dataclasses: `SessionRow` (includes `attribution` field), `MessageRow`, `ChannelBindingRow` — frozen dataclasses for type-safe query results.
 - `SessionManager(repo)` — high-level session lifecycle manager wrapping the repository. Methods:
   - `get_or_create_session(message, agent_name)` — finds a live session by explicit ID or channel binding, or creates a new one
   - `get_session(session_id)` — retrieves a session by ID
+  - `add_binding(session_id, channel_type, channel_ref)` — binds a channel to a session
+  - `remove_binding(session_id, channel_ref)` — removes a channel binding from a session (returns True/False; raises KeyError if session not found)
+  - `get_bindings(session_id)` — returns all channel bindings for a session
   - `update_agent(session_id, agent_name)` — changes the agent assigned to a session
   - `update_state(session_id, new_state)` — transitions session state with validation of allowed transitions
   - `get_attribution(session_id)` — returns the session's attribution label
@@ -36,6 +39,7 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
   - **StandardMessage dispatch** — JSON with `source`, `channel_ref`, `user_id`, `content`. Response: `{"ok": true, "session_id": "...", "response": "...", "backend": "...", "agent_name": "...", "fanout_channels": ["..."]}`
   - **list_sessions** — `{"type": "list_sessions"}`. Response: `{"ok": true, "sessions": [{"id": "...", "agent_name": "...", "state": "...", "created_at": "..."}]}`
   - **get_history** — `{"type": "get_history", "session_id": "..."}`. Response: `{"ok": true, "session_id": "...", "messages": [{"role": "...", "content": "...", "source": "...", "user_id": "...", "created_at": "..."}]}`
+  - **detach** — `{"type": "detach", "session_id": "...", "channel_ref": "..."}`. Removes the specified channel binding. Response: `{"ok": true, "removed": true/false}`. The session and other bindings remain intact.
   - Error response (any type): `{"ok": false, "error": "..."}`
   - Methods:
     - `start()` — begin listening on the Unix domain socket (removes stale socket file first)

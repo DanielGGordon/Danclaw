@@ -241,6 +241,56 @@ async def test_add_duplicate_binding_raises(mgr):
         await mgr.add_binding(session.id, "terminal", "tty1")
 
 
+# ── remove_binding ────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_remove_binding_returns_true(mgr):
+    session = await mgr.get_or_create_session(_msg(), "agent")
+    removed = await mgr.remove_binding(session.id, "tty1")
+    assert removed is True
+
+
+@pytest.mark.asyncio
+async def test_remove_binding_actually_removes(mgr):
+    session = await mgr.get_or_create_session(_msg(), "agent")
+    await mgr.remove_binding(session.id, "tty1")
+    bindings = await mgr.get_bindings(session.id)
+    assert bindings == []
+
+
+@pytest.mark.asyncio
+async def test_remove_binding_returns_false_when_not_found(mgr):
+    session = await mgr.get_or_create_session(_msg(), "agent")
+    removed = await mgr.remove_binding(session.id, "nonexistent")
+    assert removed is False
+
+
+@pytest.mark.asyncio
+async def test_remove_binding_nonexistent_session_raises(mgr):
+    with pytest.raises(KeyError, match="not found"):
+        await mgr.remove_binding("nonexistent", "tty1")
+
+
+@pytest.mark.asyncio
+async def test_remove_binding_leaves_other_bindings(mgr):
+    session = await mgr.get_or_create_session(_msg(), "agent")
+    await mgr.add_binding(session.id, "slack", "#general")
+    await mgr.remove_binding(session.id, "tty1")
+    bindings = await mgr.get_bindings(session.id)
+    assert len(bindings) == 1
+    assert bindings[0].channel_ref == "#general"
+
+
+@pytest.mark.asyncio
+async def test_remove_binding_session_still_active(mgr):
+    """Removing a binding does not affect the session state."""
+    session = await mgr.get_or_create_session(_msg(), "agent")
+    await mgr.remove_binding(session.id, "tty1")
+    fetched = await mgr.get_session(session.id)
+    assert fetched is not None
+    assert fetched.state == "ACTIVE"
+
+
 # ── get_bindings ─────────────────────────────────────────────────────
 
 @pytest.mark.asyncio

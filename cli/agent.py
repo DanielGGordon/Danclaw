@@ -115,7 +115,7 @@ def _chat_loop(
     session_id: str | None = None,
     input_fn=None,
     print_fn=None,
-) -> None:
+) -> str:
     """Run the interactive chat read-eval-print loop.
 
     Parameters
@@ -129,6 +129,11 @@ def _chat_loop(
         Callable for reading user input (default: builtin ``input``).
     print_fn:
         Callable for printing output (default: builtin ``print``).
+
+    Returns
+    -------
+    str
+        The channel_ref used during this chat loop, for detach purposes.
     """
     if input_fn is None:
         input_fn = input
@@ -174,6 +179,8 @@ def _chat_loop(
                 print_fn(f"error> {resp.get('error', 'unknown error')}\n")
     except KeyboardInterrupt:
         print_fn("\nGoodbye.")
+
+    return channel_ref
 
 
 def chat(socket_path: str, *, input_fn=None, print_fn=None) -> None:
@@ -282,12 +289,23 @@ def attach(
             print_fn(f"Session {session_id} has no messages.\n")
 
         print_fn('Type a message and press Enter. Type "exit" or press Ctrl+C to quit.\n')
-        _chat_loop(
+        channel_ref = _chat_loop(
             sock,
             session_id=session_id,
             input_fn=input_fn,
             print_fn=print_fn,
         )
+
+        # Send detach request to remove the terminal binding
+        if channel_ref is not None:
+            try:
+                _send_recv(sock, {
+                    "type": "detach",
+                    "session_id": session_id,
+                    "channel_ref": channel_ref,
+                })
+            except ConnectionError:
+                pass  # Server already gone — nothing to detach
     finally:
         sock.close()
 

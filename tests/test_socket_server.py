@@ -496,6 +496,129 @@ async def test_response_fanout_channels_empty_for_single_binding(
     assert resp["fanout_channels"] == []
 
 
+# ── detach request ────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_detach_removes_binding(server, socket_path, db):
+    """detach removes the specified channel binding."""
+    # Create a session with a binding
+    r1 = await _send_recv(socket_path, _msg_dict(content="hello"))
+    assert r1["ok"] is True
+    session_id = r1["session_id"]
+
+    # Detach the terminal binding
+    resp = await _send_recv(socket_path, {
+        "type": "detach",
+        "session_id": session_id,
+        "channel_ref": "tty1",
+    })
+    assert resp["ok"] is True
+    assert resp["removed"] is True
+
+    # Verify binding is gone
+    repo = Repository(db)
+    bindings = await repo.get_bindings_for_session(session_id)
+    refs = {b.channel_ref for b in bindings}
+    assert "tty1" not in refs
+
+
+@pytest.mark.asyncio
+async def test_detach_leaves_other_bindings(server, socket_path, db):
+    """detach removes only the specified binding, not others."""
+    # Create a session
+    r1 = await _send_recv(socket_path, _msg_dict(content="hello"))
+    assert r1["ok"] is True
+    session_id = r1["session_id"]
+
+    # Add a second binding
+    repo = Repository(db)
+    await repo.add_channel_binding(session_id, "slack", "C123")
+
+    # Detach the terminal binding
+    resp = await _send_recv(socket_path, {
+        "type": "detach",
+        "session_id": session_id,
+        "channel_ref": "tty1",
+    })
+    assert resp["ok"] is True
+    assert resp["removed"] is True
+
+    # Verify slack binding remains
+    bindings = await repo.get_bindings_for_session(session_id)
+    assert len(bindings) == 1
+    assert bindings[0].channel_ref == "C123"
+
+
+@pytest.mark.asyncio
+async def test_detach_session_still_active(server, socket_path, db):
+    """detach does not affect the session state."""
+    r1 = await _send_recv(socket_path, _msg_dict(content="hello"))
+    assert r1["ok"] is True
+    session_id = r1["session_id"]
+
+    await _send_recv(socket_path, {
+        "type": "detach",
+        "session_id": session_id,
+        "channel_ref": "tty1",
+    })
+
+    repo = Repository(db)
+    session = await repo.get_session(session_id)
+    assert session is not None
+    assert session.state == "ACTIVE"
+
+
+@pytest.mark.asyncio
+async def test_detach_nonexistent_binding(server, socket_path):
+    """detach with a non-matching channel_ref returns removed=False."""
+    r1 = await _send_recv(socket_path, _msg_dict(content="hello"))
+    assert r1["ok"] is True
+    session_id = r1["session_id"]
+
+    resp = await _send_recv(socket_path, {
+        "type": "detach",
+        "session_id": session_id,
+        "channel_ref": "nonexistent-ref",
+    })
+    assert resp["ok"] is True
+    assert resp["removed"] is False
+
+
+@pytest.mark.asyncio
+async def test_detach_nonexistent_session(server, socket_path):
+    """detach with a non-existent session_id returns an error."""
+    resp = await _send_recv(socket_path, {
+        "type": "detach",
+        "session_id": "no-such-session",
+        "channel_ref": "tty1",
+    })
+    assert resp["ok"] is False
+    assert "not found" in resp["error"]
+
+
+@pytest.mark.asyncio
+async def test_detach_missing_session_id(server, socket_path):
+    """detach without session_id returns an error."""
+    resp = await _send_recv(socket_path, {
+        "type": "detach",
+        "channel_ref": "tty1",
+    })
+    assert resp["ok"] is False
+    assert "session_id" in resp["error"]
+
+
+@pytest.mark.asyncio
+async def test_detach_missing_channel_ref(server, socket_path):
+    """detach without channel_ref returns an error."""
+    resp = await _send_recv(socket_path, {
+        "type": "detach",
+        "session_id": "some-session",
+    })
+    assert resp["ok"] is False
+    assert "channel_ref" in resp["error"]
+
+
 @pytest.mark.asyncio
 async def test_response_fanout_channels_with_multiple_bindings(
     server, socket_path, db,

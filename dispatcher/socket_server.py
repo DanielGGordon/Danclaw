@@ -28,6 +28,12 @@ types are supported:
            {"role": "...", "content": "...", "source": "...",
             "user_id": "...", "created_at": "..."}]}
 
+4. **Detach** — ``{"type": "detach", "session_id": "...", "channel_ref": "..."}``
+   Removes the channel binding.  The session and other bindings remain
+   intact.  Response::
+
+       {"ok": true, "removed": true}
+
 Error response (for any type)::
 
     {"ok": false, "error": "description of the error"}
@@ -143,6 +149,21 @@ class SocketServer:
         if isinstance(data, dict) and data.get("type") == "list_sessions":
             return await self._handle_list_sessions()
 
+        if isinstance(data, dict) and data.get("type") == "detach":
+            session_id = data.get("session_id")
+            channel_ref = data.get("channel_ref")
+            if not session_id or not isinstance(session_id, str):
+                return json.dumps({
+                    "ok": False,
+                    "error": "detach requires a string 'session_id' field",
+                })
+            if not channel_ref or not isinstance(channel_ref, str):
+                return json.dumps({
+                    "ok": False,
+                    "error": "detach requires a string 'channel_ref' field",
+                })
+            return await self._handle_detach(session_id, channel_ref)
+
         if isinstance(data, dict) and data.get("type") == "get_history":
             session_id = data.get("session_id")
             if not session_id or not isinstance(session_id, str):
@@ -172,6 +193,21 @@ class SocketServer:
             "agent_name": result.agent_name,
             "fanout_channels": list(result.fanout_channels),
         })
+
+    async def _handle_detach(
+        self, session_id: str, channel_ref: str,
+    ) -> str:
+        """Remove a channel binding from a session."""
+        try:
+            mgr = self._dispatcher._session_manager
+            removed = await mgr.remove_binding(session_id, channel_ref)
+        except KeyError as exc:
+            return json.dumps({"ok": False, "error": str(exc)})
+        except Exception as exc:
+            logger.exception("Failed to detach")
+            return json.dumps({"ok": False, "error": f"Detach error: {exc}"})
+
+        return json.dumps({"ok": True, "removed": removed})
 
     async def _handle_get_history(self, session_id: str) -> str:
         """Return message history for a session as a JSON response."""

@@ -183,7 +183,7 @@ A session can be bound to multiple channels simultaneously. When you `agent atta
 - [ ] Messages sent from Slack are delivered to the agent and the response appears in both Slack thread and terminal
 - [ ] Attribution: terminal messages appear as the bot in Slack by default
 - [x] Attribution formatting is configurable per session
-- [ ] Detaching from terminal removes the binding without affecting the Slack session
+- [x] Detaching from terminal removes the binding without affecting the Slack session
 
 ---
 

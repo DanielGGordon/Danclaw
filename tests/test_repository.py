@@ -426,6 +426,58 @@ async def test_message_row_is_frozen(repo):
         msg.content = "changed"
 
 
+# ── Channel bindings: remove ──────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_remove_channel_binding_returns_true(repo):
+    await repo.create_session("agent", session_id="s1")
+    await repo.add_channel_binding("s1", "terminal", "tty1")
+    removed = await repo.remove_channel_binding("s1", "tty1")
+    assert removed is True
+
+
+@pytest.mark.asyncio
+async def test_remove_channel_binding_actually_deletes(repo):
+    await repo.create_session("agent", session_id="s1")
+    await repo.add_channel_binding("s1", "terminal", "tty1")
+    await repo.remove_channel_binding("s1", "tty1")
+    bindings = await repo.get_bindings_for_session("s1")
+    assert bindings == []
+
+
+@pytest.mark.asyncio
+async def test_remove_channel_binding_returns_false_when_not_found(repo):
+    await repo.create_session("agent", session_id="s1")
+    removed = await repo.remove_channel_binding("s1", "nonexistent")
+    assert removed is False
+
+
+@pytest.mark.asyncio
+async def test_remove_channel_binding_leaves_other_bindings(repo):
+    await repo.create_session("agent", session_id="s1")
+    await repo.add_channel_binding("s1", "terminal", "tty1")
+    await repo.add_channel_binding("s1", "slack", "#general")
+    await repo.remove_channel_binding("s1", "tty1")
+    bindings = await repo.get_bindings_for_session("s1")
+    assert len(bindings) == 1
+    assert bindings[0].channel_ref == "#general"
+
+
+@pytest.mark.asyncio
+async def test_remove_channel_binding_only_affects_target_session(repo):
+    """Removing a binding from one session does not affect another."""
+    await repo.create_session("agent", session_id="s1")
+    await repo.create_session("agent", session_id="s2")
+    await repo.add_channel_binding("s1", "terminal", "tty1")
+    await repo.add_channel_binding("s2", "terminal", "tty1")
+    await repo.remove_channel_binding("s1", "tty1")
+    bindings_s2 = await repo.get_bindings_for_session("s2")
+    assert len(bindings_s2) == 1
+    assert bindings_s2[0].channel_ref == "tty1"
+
+
+# ── Row dataclass immutability ───────────────────────────────────────
+
 @pytest.mark.asyncio
 async def test_channel_binding_row_is_frozen(repo):
     await repo.create_session("agent", session_id="s1")

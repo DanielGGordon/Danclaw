@@ -321,6 +321,23 @@ class Repository:
             rows = await cur.fetchall()
         return [ChannelBindingRow(*r) for r in rows]
 
+    async def remove_channel_binding(
+        self,
+        session_id: str,
+        channel_ref: str,
+    ) -> bool:
+        """Remove a channel binding by session_id and channel_ref.
+
+        Returns ``True`` if a binding was deleted, ``False`` if no
+        matching binding existed.
+        """
+        cursor = await self._db.execute(
+            "DELETE FROM channel_bindings WHERE session_id = ? AND channel_ref = ?",
+            (session_id, channel_ref),
+        )
+        await self._db.commit()
+        return cursor.rowcount > 0
+
     async def find_session_by_channel(
         self, channel_type: str, channel_ref: str
     ) -> Optional[SessionRow]:
