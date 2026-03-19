@@ -465,6 +465,42 @@ class Repository:
             return None
         return _telemetry_row_from_tuple(row)
 
+    @staticmethod
+    def _build_telemetry_where(
+        *,
+        event_type: Optional[str] = None,
+        session_id: Optional[str] = None,
+        source: Optional[str] = None,
+        status: Optional[str] = None,
+        since: Optional[float] = None,
+        until: Optional[float] = None,
+    ) -> tuple[str, list[Any]]:
+        """Build a WHERE clause and parameter list for telemetry queries."""
+        conditions: list[str] = []
+        params: list[Any] = []
+
+        if event_type is not None:
+            conditions.append("event_type = ?")
+            params.append(event_type)
+        if session_id is not None:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+        if source is not None:
+            conditions.append("source = ?")
+            params.append(source)
+        if status is not None:
+            conditions.append("status = ?")
+            params.append(status)
+        if since is not None:
+            conditions.append("timestamp >= ?")
+            params.append(since)
+        if until is not None:
+            conditions.append("timestamp <= ?")
+            params.append(until)
+
+        where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+        return where, params
+
     async def query_telemetry_events(
         self,
         *,
@@ -511,29 +547,14 @@ class Repository:
                 f"Invalid order {order!r}. Must be 'asc' or 'desc'"
             )
 
-        conditions: list[str] = []
-        params: list[Any] = []
-
-        if event_type is not None:
-            conditions.append("event_type = ?")
-            params.append(event_type)
-        if session_id is not None:
-            conditions.append("session_id = ?")
-            params.append(session_id)
-        if source is not None:
-            conditions.append("source = ?")
-            params.append(source)
-        if status is not None:
-            conditions.append("status = ?")
-            params.append(status)
-        if since is not None:
-            conditions.append("timestamp >= ?")
-            params.append(since)
-        if until is not None:
-            conditions.append("timestamp <= ?")
-            params.append(until)
-
-        where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+        where, params = self._build_telemetry_where(
+            event_type=event_type,
+            session_id=session_id,
+            source=source,
+            status=status,
+            since=since,
+            until=until,
+        )
         direction = "ASC" if order == "asc" else "DESC"
         sql = (
             "SELECT id, event_type, payload, timestamp, created_at, "
@@ -563,29 +584,14 @@ class Repository:
 
         Accepts the same filter parameters as :meth:`query_telemetry_events`.
         """
-        conditions: list[str] = []
-        params: list[Any] = []
-
-        if event_type is not None:
-            conditions.append("event_type = ?")
-            params.append(event_type)
-        if session_id is not None:
-            conditions.append("session_id = ?")
-            params.append(session_id)
-        if source is not None:
-            conditions.append("source = ?")
-            params.append(source)
-        if status is not None:
-            conditions.append("status = ?")
-            params.append(status)
-        if since is not None:
-            conditions.append("timestamp >= ?")
-            params.append(since)
-        if until is not None:
-            conditions.append("timestamp <= ?")
-            params.append(until)
-
-        where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+        where, params = self._build_telemetry_where(
+            event_type=event_type,
+            session_id=session_id,
+            source=source,
+            status=status,
+            since=since,
+            until=until,
+        )
         sql = f"SELECT COUNT(*) FROM telemetry_events{where}"
 
         async with self._db.execute(sql, tuple(params)) as cur:
