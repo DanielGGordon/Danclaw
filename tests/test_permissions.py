@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from config import ChannelPermissions, PermissionsConfig, UserPermissions
-from dispatcher.permissions import resolve_permissions
+from dispatcher.permissions import requires_approval, resolve_permissions
 
 
 class TestResolvePermissions:
@@ -103,3 +103,148 @@ class TestResolvePermissions:
         )
         result = resolve_permissions(config, "nope", "nope")
         assert result == frozenset()
+
+
+class TestRequiresApproval:
+    """Tests for requires_approval."""
+
+    def test_approval_from_channel(self) -> None:
+        """Channel approval_required=True triggers approval."""
+        config = PermissionsConfig(
+            channels={
+                "slack": ChannelPermissions(
+                    allowed_tools=["git"],
+                    approval_required=True,
+                ),
+            },
+            users={"alice": UserPermissions(additional_tools=["deploy"])},
+        )
+        assert requires_approval(config, "slack", "alice") is True
+
+    def test_approval_from_user(self) -> None:
+        """User approval_required=True triggers approval."""
+        config = PermissionsConfig(
+            channels={"slack": ChannelPermissions(allowed_tools=["git"])},
+            users={
+                "alice": UserPermissions(
+                    additional_tools=["deploy"],
+                    approval_required=True,
+                ),
+            },
+        )
+        assert requires_approval(config, "slack", "alice") is True
+
+    def test_approval_from_both(self) -> None:
+        """Both channel and user approval_required=True triggers approval."""
+        config = PermissionsConfig(
+            channels={
+                "slack": ChannelPermissions(
+                    allowed_tools=["git"],
+                    approval_required=True,
+                ),
+            },
+            users={
+                "alice": UserPermissions(
+                    additional_tools=["deploy"],
+                    approval_required=True,
+                ),
+            },
+        )
+        assert requires_approval(config, "slack", "alice") is True
+
+    def test_approval_from_neither(self) -> None:
+        """Neither channel nor user sets approval_required — returns False."""
+        config = PermissionsConfig(
+            channels={"slack": ChannelPermissions(allowed_tools=["git"])},
+            users={"alice": UserPermissions(additional_tools=["deploy"])},
+        )
+        assert requires_approval(config, "slack", "alice") is False
+
+    def test_approval_empty_config(self) -> None:
+        """Empty config returns False."""
+        config = PermissionsConfig()
+        assert requires_approval(config, "slack", "alice") is False
+
+    def test_approval_unknown_channel_and_user(self) -> None:
+        """Unknown channel and user returns False."""
+        config = PermissionsConfig(
+            channels={
+                "slack": ChannelPermissions(
+                    allowed_tools=["git"],
+                    approval_required=True,
+                ),
+            },
+            users={
+                "alice": UserPermissions(
+                    additional_tools=["deploy"],
+                    approval_required=True,
+                ),
+            },
+        )
+        assert requires_approval(config, "nope", "nope") is False
+
+    def test_approval_override_channel_only(self) -> None:
+        """Override channel: only channel approval_required matters.
+
+        When override=True and channel has approval_required=True, returns True
+        even though user does not require approval.
+        """
+        config = PermissionsConfig(
+            channels={
+                "restricted": ChannelPermissions(
+                    allowed_tools=["read_only"],
+                    override=True,
+                    approval_required=True,
+                ),
+            },
+            users={"alice": UserPermissions(additional_tools=["deploy"])},
+        )
+        assert requires_approval(config, "restricted", "alice") is True
+
+    def test_approval_override_ignores_user(self) -> None:
+        """Override channel: user approval_required is ignored.
+
+        When override=True and channel has approval_required=False, returns
+        False even though user has approval_required=True.
+        """
+        config = PermissionsConfig(
+            channels={
+                "restricted": ChannelPermissions(
+                    allowed_tools=["read_only"],
+                    override=True,
+                    approval_required=False,
+                ),
+            },
+            users={
+                "alice": UserPermissions(
+                    additional_tools=["deploy"],
+                    approval_required=True,
+                ),
+            },
+        )
+        assert requires_approval(config, "restricted", "alice") is False
+
+    def test_approval_unknown_user_channel_required(self) -> None:
+        """Unknown user with channel approval_required=True returns True."""
+        config = PermissionsConfig(
+            channels={
+                "slack": ChannelPermissions(
+                    allowed_tools=["git"],
+                    approval_required=True,
+                ),
+            },
+        )
+        assert requires_approval(config, "slack", "nobody") is True
+
+    def test_approval_unknown_channel_user_required(self) -> None:
+        """Unknown channel with user approval_required=True returns True."""
+        config = PermissionsConfig(
+            channels={},
+            users={
+                "alice": UserPermissions(
+                    additional_tools=["deploy"],
+                    approval_required=True,
+                ),
+            },
+        )
+        assert requires_approval(config, "unknown", "alice") is True

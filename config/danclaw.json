@@ -16,7 +16,8 @@
       },
       "slack": {
         "allowed_tools": ["obsidian"],
-        "override": true
+        "override": true,
+        "approval_required": true
       }
     },
     "users": {
