@@ -10,10 +10,15 @@ from dispatcher.executor import (
 )
 from dispatcher.models import StandardMessage
 from dispatcher.permissions import requires_approval, resolve_permissions
-from dispatcher.repository import Repository
+from dispatcher.repository import Repository, TelemetryEventRow
 from dispatcher.session_manager import SessionManager
 from dispatcher.socket_server import SocketServer
-from dispatcher.telemetry import TelemetryCollector, TelemetryEvent
+from dispatcher.telemetry import (
+    DbSink,
+    JsonlSink,
+    TelemetryCollector,
+    TelemetryEvent,
+)
 
 __all__ = [
     "StandardMessage",
@@ -33,4 +38,7 @@ __all__ = [
     "resolve_permissions",
     "TelemetryCollector",
     "TelemetryEvent",
+    "TelemetryEventRow",
+    "JsonlSink",
+    "DbSink",
 ]
