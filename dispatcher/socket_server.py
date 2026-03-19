@@ -152,7 +152,16 @@ class SocketServer:
 
         try:
             while True:
-                line = await reader.readline()
+                try:
+                    line = await reader.readline()
+                except ValueError:
+                    error_resp = json.dumps({
+                        "ok": False,
+                        "error": "Request line too long",
+                    })
+                    writer.write(error_resp.encode("utf-8") + b"\n")
+                    await writer.drain()
+                    break
                 if not line:
                     # Client disconnected
                     break
