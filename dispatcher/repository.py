@@ -64,6 +64,9 @@ class TelemetryEventRow:
     payload: dict[str, Any]
     timestamp: float
     created_at: str
+    session_id: str | None = None
+    source: str | None = None
+    status: str = "ok"
 
 
 # ── Valid session states ─────────────────────────────────────────────
@@ -381,6 +384,10 @@ class Repository:
         event_type: str,
         payload: dict[str, Any],
         timestamp: float,
+        *,
+        session_id: str | None = None,
+        source: str | None = None,
+        status: str = "ok",
     ) -> TelemetryEventRow:
         """Insert a telemetry event and return its row.
 
@@ -392,13 +399,20 @@ class Repository:
             Arbitrary key-value data, stored as JSON text.
         timestamp:
             Unix timestamp when the event was recorded.
+        session_id:
+            Session ID the event relates to, if any.
+        source:
+            Channel source (e.g. ``"slack"``), if known.
+        status:
+            Outcome status.  Defaults to ``"ok"``.
         """
         now = _utcnow()
         payload_json = json.dumps(payload)
         cursor = await self._db.execute(
-            "INSERT INTO telemetry_events (event_type, payload, timestamp, created_at) "
-            "VALUES (?, ?, ?, ?)",
-            (event_type, payload_json, timestamp, now),
+            "INSERT INTO telemetry_events "
+            "(event_type, session_id, source, status, payload, timestamp, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (event_type, session_id, source, status, payload_json, timestamp, now),
         )
         await self._db.commit()
         return TelemetryEventRow(
@@ -407,6 +421,9 @@ class Repository:
             payload=payload,
             timestamp=timestamp,
             created_at=now,
+            session_id=session_id,
+            source=source,
+            status=status,
         )
 
     async def get_telemetry_events(
@@ -418,13 +435,15 @@ class Repository:
         """
         if event_type is None:
             sql = (
-                "SELECT id, event_type, payload, timestamp, created_at "
+                "SELECT id, event_type, payload, timestamp, created_at, "
+                "session_id, source, status "
                 "FROM telemetry_events ORDER BY timestamp, id"
             )
             params: tuple = ()
         else:
             sql = (
-                "SELECT id, event_type, payload, timestamp, created_at "
+                "SELECT id, event_type, payload, timestamp, created_at, "
+                "session_id, source, status "
                 "FROM telemetry_events WHERE event_type = ? ORDER BY timestamp, id"
             )
             params = (event_type,)
@@ -438,6 +457,9 @@ class Repository:
                 payload=json.loads(r[2]),
                 timestamp=r[3],
                 created_at=r[4],
+                session_id=r[5],
+                source=r[6],
+                status=r[7],
             )
             for r in rows
         ]

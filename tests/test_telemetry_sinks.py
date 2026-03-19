@@ -25,10 +25,14 @@ class TestTelemetryEventToDict:
     def test_to_dict(self):
         event = TelemetryEvent(
             event_type="login", payload={"user": "alice"}, timestamp=1000.0,
+            session_id="s1", source="slack", status="ok",
         )
         d = event.to_dict()
         assert d == {
             "event_type": "login",
+            "session_id": "s1",
+            "source": "slack",
+            "status": "ok",
             "payload": {"user": "alice"},
             "timestamp": 1000.0,
         }
@@ -37,6 +41,9 @@ class TestTelemetryEventToDict:
         event = TelemetryEvent(event_type="ping", payload={}, timestamp=2000.0)
         d = event.to_dict()
         assert d["payload"] == {}
+        assert d["session_id"] is None
+        assert d["source"] is None
+        assert d["status"] == "ok"
 
 
 # ── JsonlSink ───────────────────────────────────────────────────────
@@ -54,7 +61,7 @@ class TestJsonlSink:
     def test_write_appends_json_line(self, tmp_path: Path):
         path = tmp_path / "events.jsonl"
         sink = JsonlSink(path)
-        sink.write(TelemetryEvent("a", {"n": 1}, 100.0))
+        sink.write(TelemetryEvent("a", {"n": 1}, 100.0, session_id="s1", source="slack"))
         sink.write(TelemetryEvent("b", {"n": 2}, 200.0))
         lines = path.read_text().strip().split("\n")
         assert len(lines) == 2
@@ -62,8 +69,12 @@ class TestJsonlSink:
         assert first["event_type"] == "a"
         assert first["payload"] == {"n": 1}
         assert first["timestamp"] == 100.0
+        assert first["session_id"] == "s1"
+        assert first["source"] == "slack"
+        assert first["status"] == "ok"
         second = json.loads(lines[1])
         assert second["event_type"] == "b"
+        assert second["session_id"] is None
 
     def test_path_property(self, tmp_path: Path):
         path = tmp_path / "events.jsonl"
@@ -106,7 +117,11 @@ async def db_and_repo():
             );
             CREATE TABLE IF NOT EXISTS telemetry_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_type TEXT NOT NULL, payload TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                session_id TEXT,
+                source TEXT,
+                status TEXT NOT NULL DEFAULT 'ok',
+                payload TEXT NOT NULL,
                 timestamp REAL NOT NULL, created_at TEXT NOT NULL
             );
             """
@@ -121,7 +136,10 @@ class TestDbSink:
     async def test_write_and_flush(self, db_and_repo):
         _db, repo = db_and_repo
         sink = DbSink(repo)
-        event = TelemetryEvent("login", {"user": "bob"}, 500.0)
+        event = TelemetryEvent(
+            "login", {"user": "bob"}, 500.0,
+            session_id="s1", source="terminal", status="ok",
+        )
         sink.write(event)
         await sink.flush()
         rows = await repo.get_telemetry_events()
@@ -129,6 +147,9 @@ class TestDbSink:
         assert rows[0].event_type == "login"
         assert rows[0].payload == {"user": "bob"}
         assert rows[0].timestamp == 500.0
+        assert rows[0].session_id == "s1"
+        assert rows[0].source == "terminal"
+        assert rows[0].status == "ok"
 
     @pytest.mark.asyncio
     async def test_flush_multiple(self, db_and_repo):
@@ -300,9 +321,10 @@ class TestInitDbTelemetryTable:
             from dispatcher.database import _SCHEMA_SQL
             await db.executescript(_SCHEMA_SQL)
             await db.execute(
-                "INSERT INTO telemetry_events (event_type, payload, timestamp, created_at) "
-                "VALUES (?, ?, ?, ?)",
-                ("test", "{}", 1.0, "2024-01-01"),
+                "INSERT INTO telemetry_events "
+                "(event_type, session_id, source, status, payload, timestamp, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("test", None, None, "ok", "{}", 1.0, "2024-01-01"),
             )
             await db.commit()
             async with db.execute("SELECT count(*) FROM telemetry_events") as cur:

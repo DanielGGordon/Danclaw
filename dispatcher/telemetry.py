@@ -30,6 +30,9 @@ class TelemetryEvent:
 
     Attributes:
         event_type: Category of the event (e.g. ``"fallback"``).
+        session_id: The session this event belongs to, or ``None``.
+        source: The channel source (e.g. ``"slack"``, ``"terminal"``), or ``None``.
+        status: Outcome status (e.g. ``"ok"``, ``"error"``).  Defaults to ``"ok"``.
         payload: Arbitrary key-value data associated with the event.
         timestamp: Unix timestamp when the event was recorded.
     """
@@ -37,11 +40,17 @@ class TelemetryEvent:
     event_type: str
     payload: dict[str, Any]
     timestamp: float
+    session_id: str | None = None
+    source: str | None = None
+    status: str = "ok"
 
     def to_dict(self) -> dict[str, Any]:
         """Return a plain dict representation suitable for JSON serialization."""
         return {
             "event_type": self.event_type,
+            "session_id": self.session_id,
+            "source": self.source,
+            "status": self.status,
             "payload": self.payload,
             "timestamp": self.timestamp,
         }
@@ -121,6 +130,9 @@ class DbSink:
                 event_type=event.event_type,
                 payload=event.payload,
                 timestamp=event.timestamp,
+                session_id=event.session_id,
+                source=event.source,
+                status=event.status,
             )
 
 
@@ -157,6 +169,9 @@ class TelemetryCollector:
         event_type: str,
         payload: dict[str, Any] | None = None,
         *,
+        session_id: str | None = None,
+        source: str | None = None,
+        status: str = "ok",
         timestamp: float | None = None,
     ) -> TelemetryEvent:
         """Record a telemetry event and return it.
@@ -169,6 +184,12 @@ class TelemetryCollector:
             Category string for the event.
         payload:
             Optional dict of event-specific data.
+        session_id:
+            Session ID the event relates to, if any.
+        source:
+            Channel source (e.g. ``"slack"``), if known.
+        status:
+            Outcome status.  Defaults to ``"ok"``.
         timestamp:
             Unix timestamp.  Defaults to ``time.time()``.
         """
@@ -176,6 +197,9 @@ class TelemetryCollector:
             event_type=event_type,
             payload=payload or {},
             timestamp=timestamp if timestamp is not None else time.time(),
+            session_id=session_id,
+            source=source,
+            status=status,
         )
         self._events.append(event)
         for sink in self._sinks:

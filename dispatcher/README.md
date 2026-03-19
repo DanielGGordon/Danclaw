@@ -11,7 +11,7 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
   - Messages: `save_message`, `get_messages_for_session`
   - Channel bindings: `add_channel_binding`, `remove_channel_binding`, `get_bindings_for_session`, `find_session_by_channel`
 - Row dataclasses: `SessionRow` (includes `attribution` field), `MessageRow`, `ChannelBindingRow`, `TelemetryEventRow` — frozen dataclasses for type-safe query results.
-  - Repository also provides telemetry methods: `save_telemetry_event(event_type, payload, timestamp)` and `get_telemetry_events(event_type=None)`.
+  - Repository also provides telemetry methods: `save_telemetry_event(event_type, payload, timestamp, *, session_id=None, source=None, status="ok")` and `get_telemetry_events(event_type=None)`.
 - `SessionManager(repo)` — high-level session lifecycle manager wrapping the repository. Methods:
   - `get_or_create_session(message, agent_name)` — finds a live session by explicit ID or channel binding, or creates a new one
   - `get_session(session_id)` — retrieves a session by ID
@@ -47,9 +47,9 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
     - `stop()` — stop accepting connections and remove the socket file
     - `socket_path` — property returning the configured socket path
     - `is_serving` — property returning whether the server is currently active
-- `TelemetryEvent` — frozen dataclass representing a single telemetry event. Fields: `event_type` (str), `payload` (dict), `timestamp` (float, Unix epoch).
+- `TelemetryEvent` — frozen dataclass representing a single telemetry event. Fields: `event_type` (str), `payload` (dict), `timestamp` (float, Unix epoch), `session_id` (str | None), `source` (str | None), `status` (str, defaults to `"ok"`).
 - `TelemetryCollector` — telemetry event collector with pluggable sinks. Events are always stored in-memory; additional sinks can be registered via `add_sink()`. Methods:
-  - `record(event_type, payload=None, *, timestamp=None) -> TelemetryEvent` — records an event, stores it in-memory, and writes it to all registered sinks. Auto-generates a timestamp if not provided.
+  - `record(event_type, payload=None, *, session_id=None, source=None, status="ok", timestamp=None) -> TelemetryEvent` — records an event, stores it in-memory, and writes it to all registered sinks. Auto-generates a timestamp if not provided. The `session_id`, `source`, and `status` fields are populated by the dispatcher from the message context.
   - `events` — property returning a copy of the recorded events list.
   - `sinks` — property returning a copy of the registered sinks list.
   - `add_sink(sink)` — registers a sink to receive future events.
