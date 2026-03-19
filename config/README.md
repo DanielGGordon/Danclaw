@@ -16,7 +16,7 @@ Configuration loading and validation. Reads the JSON config file that defines ag
   - `default_agent` — Property returning the first agent in the list. Raises `ConfigError` if no agents are configured.
   - `get_agent(name)` — Looks up an agent by name. Returns `None` if not found.
 - `AgentConfig` — Frozen dataclass: `name`, `persona`, `backend_preference`, `allowed_tools`, `timeout` (int, seconds, default 120), `fallback_notification` (string, default `"silent"`).
-- `PermissionsConfig` — Frozen dataclass: `channels: dict[str, ChannelPermissions]`, `users: dict[str, UserPermissions]`. Defaults to empty dicts when omitted from config.
+- `PermissionsConfig` — Frozen dataclass: `channels: dict[str, ChannelPermissions]`, `users: dict[str, UserPermissions]`, `restricted_tools: frozenset[str]`. Defaults to empty dicts/frozenset when omitted from config. The `restricted_tools` field lists tool names that can only be granted via channel permissions, never via user `additional_tools` — this prevents users from escalating access to sensitive operations (e.g. deploy) on channels that don't explicitly allow them.
 - `ChannelPermissions` — Frozen dataclass: `allowed_tools: list[str]`, `override: bool`, `approval_required: bool`. The `override` flag, when True, locks the channel to channel-only permissions (user permissions are ignored). The `approval_required` flag, when True, requires confirmation before high-impact actions on this channel.
 - `UserPermissions` — Frozen dataclass: `additional_tools: list[str]`, `approval_required: bool`. Extra tools granted to a user, additive on top of the channel baseline. The `approval_required` flag, when True, requires confirmation before high-impact actions by this user.
 - `ToolsConfig` — Frozen dataclass: `obsidian: ObsidianToolConfig | None`. Container for tool-specific settings. Defaults to all-`None` when `tools` section is omitted from config.
@@ -39,6 +39,7 @@ Configuration loading and validation. Reads the JSON config file that defines ag
 - `permissions` is optional (defaults to empty channels/users). When present:
   - `permissions.channels` maps channel names to objects with `allowed_tools` (list of strings, default `[]`), `override` (boolean, default `false`), and `approval_required` (boolean, default `false`).
   - `permissions.users` maps user identifiers to objects with `additional_tools` (list of strings, default `[]`) and `approval_required` (boolean, default `false`).
+  - `permissions.restricted_tools` (optional): list of tool name strings that can only be granted via channel permissions. User `additional_tools` entries matching these names are stripped during permission resolution. Defaults to `[]`.
 - `tools` is optional (defaults to empty). When present, must be a JSON object with tool-specific settings:
   - `tools.obsidian` (optional): object with `vault_path` (required non-empty string) specifying the absolute path to the Obsidian vault directory.
 - `telemetry` is optional (defaults to empty). When present, must be a JSON object:

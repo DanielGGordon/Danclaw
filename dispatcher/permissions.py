@@ -36,6 +36,11 @@ def resolve_permissions(
     user_perms = config.users.get(user_id)
     user_tools: set[str] = set(user_perms.additional_tools) if user_perms else set()
 
+    # Strip restricted tools from user permissions — they can only come
+    # from channel definitions, never from user additional_tools.
+    if config.restricted_tools:
+        user_tools -= config.restricted_tools
+
     return frozenset(channel_tools | user_tools)
 
 

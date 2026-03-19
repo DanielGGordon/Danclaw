@@ -38,8 +38,9 @@
     },
     "users": {
       "dan": {
-        "additional_tools": ["git", "deploy"]
+        "additional_tools": ["git"]
       }
-    }
+    },
+    "restricted_tools": ["deploy", "trigger_deploy"]
   }
 }
