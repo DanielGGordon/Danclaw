@@ -245,8 +245,3 @@ An admin channel/agent that can modify the system's own code, commit, push to gi
 - [x] Telemetry events emitted for deploy actions
 - [x] Non-admin users/channels cannot trigger deploy
 
----
-
-## Future Work
-
-- **Real-time voice calls** (user stories 21, 22): Twilio Media Streams + ElevenLabs real-time STT/TTS with cloned voice. Deferred — revisit once the core platform is stable and latency benchmarks can be run against real infrastructure.
