@@ -16,7 +16,7 @@
   "listeners": {},
   "tools": {
     "obsidian": {
-      "vault_path": "/home/dgordon/obsidian/vault"
+      "vault_path": "/path/to/obsidian/vault"
     }
   },
   "permissions": {
