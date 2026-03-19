@@ -26,3 +26,7 @@ agent = "cli.agent:main"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+addopts = "-m 'not manual'"
+markers = [
+    "manual: marks tests that require external services and manual invocation",
+]
