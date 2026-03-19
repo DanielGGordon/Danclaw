@@ -51,6 +51,9 @@ danclaw/
 │   └── README.md             # Module documentation
 ├── tools/
 │   ├── __init__.py           # Python package marker
+│   ├── obsidian_read.py      # Read a file from an Obsidian vault (subprocess tool)
+│   ├── obsidian_write.py     # Create or update a file in an Obsidian vault (subprocess tool)
+│   ├── obsidian_search.py    # Search/list files in an Obsidian vault by name or content (subprocess tool)
 │   └── README.md             # Module documentation
 ├── scripts/
 │   └── e2e_test.py           # Standalone end-to-end smoke test (requires claude CLI)
