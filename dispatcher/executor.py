@@ -9,6 +9,7 @@ subprocess with ``--resume`` for session persistence and
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass
 from typing import Protocol
@@ -100,9 +101,10 @@ class MockExecutor:
 class ClaudeExecutor:
     """Executor that calls ``claude -p`` as an async subprocess.
 
-    Runs ``claude -p "<message>" --resume <session_id>`` and optionally
-    passes the agent persona via ``--system-prompt``.  Stdout is captured
-    as the response content.
+    Runs ``claude -p "<message>" --output-format json`` and optionally
+    passes the agent persona via ``--system-prompt``.  JSON output is
+    parsed to extract the response text and Claude's own session ID,
+    which is tracked internally for ``--resume`` on follow-up calls.
 
     Parameters
     ----------
@@ -113,6 +115,7 @@ class ClaudeExecutor:
 
     def __init__(self, claude_bin: str = "claude") -> None:
         self._claude_bin = claude_bin
+        self._claude_sessions: dict[str, str] = {}
 
     async def execute(
         self,
@@ -123,22 +126,31 @@ class ClaudeExecutor:
     ) -> ExecutorResult:
         """Execute *message* via the ``claude`` CLI subprocess.
 
-        The session ID from *message* is used with ``--resume`` to
-        maintain conversation context across calls.  If *persona* is
-        provided, it is passed as ``--system-prompt``.
+        Claude's own session ID (returned in its JSON output) is tracked
+        internally.  On follow-up messages the executor maps the
+        dispatcher session ID or channel reference to the correct Claude
+        session ID for ``--resume``.
 
         Raises
         ------
         RuntimeError
             If the subprocess exits with a non-zero return code.
         """
-        cmd = [self._claude_bin, "-p", message.content]
+        cmd = [self._claude_bin, "-p", message.content,
+               "--output-format", "json"]
 
-        if message.session_id:
-            cmd.extend(["--resume", message.session_id])
+        claude_session_id = (
+            self._claude_sessions.get(message.session_id or "")
+            or self._claude_sessions.get(message.channel_ref)
+        )
+        if claude_session_id:
+            cmd.extend(["--resume", claude_session_id])
 
         if persona:
             cmd.extend(["--system-prompt", persona])
+
+        if allowed_tools is not None:
+            cmd.extend(["--allowedTools", ",".join(sorted(allowed_tools))])
 
         logger.info("Running claude subprocess: %s", cmd)
 
@@ -155,5 +167,18 @@ class ClaudeExecutor:
                 f"claude exited with code {proc.returncode}: {stderr_text}"
             )
 
-        content = stdout.decode(errors="replace").strip()
+        raw = stdout.decode(errors="replace").strip()
+        try:
+            data = json.loads(raw)
+            content = data.get("result", "")
+        except (json.JSONDecodeError, TypeError):
+            content = raw
+            data = {}
+
+        new_claude_sid = data.get("session_id") if isinstance(data, dict) else None
+        if new_claude_sid:
+            self._claude_sessions[message.channel_ref] = new_claude_sid
+            if message.session_id:
+                self._claude_sessions[message.session_id] = new_claude_sid
+
         return ExecutorResult(content=content, backend="claude")

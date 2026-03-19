@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -117,19 +118,20 @@ def _make_proc_mock(returncode: int = 0, stdout: bytes = b"", stderr: bytes = b"
     return proc
 
 
+def _make_claude_json(result: str = "", session_id: str = "claude-sess-001") -> bytes:
+    """Build JSON bytes mimicking ``claude -p --output-format json`` output."""
+    return json.dumps({"result": result, "session_id": session_id}).encode()
+
+
 class TestClaudeExecutorCommand:
     @pytest.mark.asyncio
     @patch("dispatcher.executor.asyncio.create_subprocess_exec")
     async def test_basic_command_construction(self, mock_exec):
-        proc = _make_proc_mock(stdout=b"Hello from Claude")
+        proc = _make_proc_mock(stdout=_make_claude_json("Hello from Claude"))
         mock_exec.return_value = proc
 
         executor = ClaudeExecutor()
         msg = _make_message("What is 2+2?")
-        msg = StandardMessage(
-            source="terminal", channel_ref="ref", user_id="u1",
-            content="What is 2+2?", session_id="sess-abc",
-        )
         result = await executor.execute(msg)
 
         mock_exec.assert_called_once()
@@ -137,30 +139,82 @@ class TestClaudeExecutorCommand:
         assert args[0] == "claude"
         assert args[1] == "-p"
         assert args[2] == "What is 2+2?"
-        assert "--resume" in args
-        assert "sess-abc" in args
+        assert "--output-format" in args
+        assert "json" in args
 
     @pytest.mark.asyncio
     @patch("dispatcher.executor.asyncio.create_subprocess_exec")
-    async def test_session_id_used_for_resume(self, mock_exec):
-        proc = _make_proc_mock(stdout=b"response")
+    async def test_dispatcher_session_id_not_used_for_resume(self, mock_exec):
+        """A dispatcher session ID alone must not trigger --resume."""
+        proc = _make_proc_mock(stdout=_make_claude_json("response"))
         mock_exec.return_value = proc
 
         executor = ClaudeExecutor()
         msg = StandardMessage(
             source="terminal", channel_ref="ref", user_id="u1",
-            content="hi", session_id="my-session-123",
+            content="hi", session_id="dispatcher-uuid-123",
         )
         await executor.execute(msg)
 
         args = mock_exec.call_args[0]
+        assert "--resume" not in args
+
+    @pytest.mark.asyncio
+    @patch("dispatcher.executor.asyncio.create_subprocess_exec")
+    async def test_claude_session_id_used_for_resume_via_channel(self, mock_exec):
+        """After the first call, Claude's own session ID is used via channel_ref."""
+        proc1 = _make_proc_mock(stdout=_make_claude_json("first", "claude-abc"))
+        mock_exec.return_value = proc1
+
+        executor = ClaudeExecutor()
+        msg1 = StandardMessage(
+            source="terminal", channel_ref="ch-1", user_id="u1",
+            content="hello",
+        )
+        await executor.execute(msg1)
+
+        proc2 = _make_proc_mock(stdout=_make_claude_json("second", "claude-abc"))
+        mock_exec.return_value = proc2
+        msg2 = StandardMessage(
+            source="terminal", channel_ref="ch-1", user_id="u1",
+            content="follow up", session_id="disp-sess-1",
+        )
+        await executor.execute(msg2)
+
+        args = mock_exec.call_args[0]
         resume_idx = list(args).index("--resume")
-        assert args[resume_idx + 1] == "my-session-123"
+        assert args[resume_idx + 1] == "claude-abc"
+
+    @pytest.mark.asyncio
+    @patch("dispatcher.executor.asyncio.create_subprocess_exec")
+    async def test_claude_session_id_used_for_resume_via_dispatcher_id(self, mock_exec):
+        """Once a dispatcher session ID is mapped, it can be used directly."""
+        executor = ClaudeExecutor()
+
+        proc1 = _make_proc_mock(stdout=_make_claude_json("first", "claude-xyz"))
+        mock_exec.return_value = proc1
+        msg1 = StandardMessage(
+            source="terminal", channel_ref="ch-1", user_id="u1",
+            content="hello", session_id="disp-1",
+        )
+        await executor.execute(msg1)
+
+        proc2 = _make_proc_mock(stdout=_make_claude_json("second", "claude-xyz"))
+        mock_exec.return_value = proc2
+        msg2 = StandardMessage(
+            source="terminal", channel_ref="ch-different", user_id="u1",
+            content="follow up", session_id="disp-1",
+        )
+        await executor.execute(msg2)
+
+        args = mock_exec.call_args[0]
+        resume_idx = list(args).index("--resume")
+        assert args[resume_idx + 1] == "claude-xyz"
 
     @pytest.mark.asyncio
     @patch("dispatcher.executor.asyncio.create_subprocess_exec")
     async def test_no_resume_without_session_id(self, mock_exec):
-        proc = _make_proc_mock(stdout=b"response")
+        proc = _make_proc_mock(stdout=_make_claude_json("response"))
         mock_exec.return_value = proc
 
         executor = ClaudeExecutor()
@@ -175,7 +229,7 @@ class TestClaudeExecutorPersona:
     @pytest.mark.asyncio
     @patch("dispatcher.executor.asyncio.create_subprocess_exec")
     async def test_persona_passed_as_system_prompt(self, mock_exec):
-        proc = _make_proc_mock(stdout=b"ok")
+        proc = _make_proc_mock(stdout=_make_claude_json("ok"))
         mock_exec.return_value = proc
 
         executor = ClaudeExecutor()
@@ -190,7 +244,7 @@ class TestClaudeExecutorPersona:
     @pytest.mark.asyncio
     @patch("dispatcher.executor.asyncio.create_subprocess_exec")
     async def test_no_system_prompt_without_persona(self, mock_exec):
-        proc = _make_proc_mock(stdout=b"ok")
+        proc = _make_proc_mock(stdout=_make_claude_json("ok"))
         mock_exec.return_value = proc
 
         executor = ClaudeExecutor()
@@ -203,7 +257,7 @@ class TestClaudeExecutorPersona:
     @pytest.mark.asyncio
     @patch("dispatcher.executor.asyncio.create_subprocess_exec")
     async def test_empty_persona_not_passed(self, mock_exec):
-        proc = _make_proc_mock(stdout=b"ok")
+        proc = _make_proc_mock(stdout=_make_claude_json("ok"))
         mock_exec.return_value = proc
 
         executor = ClaudeExecutor()
@@ -214,11 +268,56 @@ class TestClaudeExecutorPersona:
         assert "--system-prompt" not in args
 
 
+class TestClaudeExecutorAllowedTools:
+    @pytest.mark.asyncio
+    @patch("dispatcher.executor.asyncio.create_subprocess_exec")
+    async def test_allowed_tools_passed(self, mock_exec):
+        proc = _make_proc_mock(stdout=_make_claude_json("ok"))
+        mock_exec.return_value = proc
+
+        executor = ClaudeExecutor()
+        msg = _make_message("hi")
+        await executor.execute(msg, allowed_tools=frozenset({"obsidian", "bash"}))
+
+        args = mock_exec.call_args[0]
+        assert "--allowedTools" in args
+        at_idx = list(args).index("--allowedTools")
+        assert args[at_idx + 1] == "bash,obsidian"
+
+    @pytest.mark.asyncio
+    @patch("dispatcher.executor.asyncio.create_subprocess_exec")
+    async def test_no_allowed_tools_when_none(self, mock_exec):
+        proc = _make_proc_mock(stdout=_make_claude_json("ok"))
+        mock_exec.return_value = proc
+
+        executor = ClaudeExecutor()
+        msg = _make_message("hi")
+        await executor.execute(msg)
+
+        args = mock_exec.call_args[0]
+        assert "--allowedTools" not in args
+
+    @pytest.mark.asyncio
+    @patch("dispatcher.executor.asyncio.create_subprocess_exec")
+    async def test_empty_allowed_tools_still_passed(self, mock_exec):
+        proc = _make_proc_mock(stdout=_make_claude_json("ok"))
+        mock_exec.return_value = proc
+
+        executor = ClaudeExecutor()
+        msg = _make_message("hi")
+        await executor.execute(msg, allowed_tools=frozenset())
+
+        args = mock_exec.call_args[0]
+        assert "--allowedTools" in args
+        at_idx = list(args).index("--allowedTools")
+        assert args[at_idx + 1] == ""
+
+
 class TestClaudeExecutorOutput:
     @pytest.mark.asyncio
     @patch("dispatcher.executor.asyncio.create_subprocess_exec")
     async def test_stdout_captured_as_content(self, mock_exec):
-        proc = _make_proc_mock(stdout=b"The answer is 4.\n")
+        proc = _make_proc_mock(stdout=_make_claude_json("The answer is 4."))
         mock_exec.return_value = proc
 
         executor = ClaudeExecutor()
@@ -229,13 +328,23 @@ class TestClaudeExecutorOutput:
 
     @pytest.mark.asyncio
     @patch("dispatcher.executor.asyncio.create_subprocess_exec")
-    async def test_empty_stdout(self, mock_exec):
-        proc = _make_proc_mock(stdout=b"")
+    async def test_empty_result(self, mock_exec):
+        proc = _make_proc_mock(stdout=_make_claude_json(""))
         mock_exec.return_value = proc
 
         executor = ClaudeExecutor()
         result = await executor.execute(_make_message("hi"))
         assert result.content == ""
+
+    @pytest.mark.asyncio
+    @patch("dispatcher.executor.asyncio.create_subprocess_exec")
+    async def test_non_json_stdout_falls_back_to_raw(self, mock_exec):
+        proc = _make_proc_mock(stdout=b"plain text response\n")
+        mock_exec.return_value = proc
+
+        executor = ClaudeExecutor()
+        result = await executor.execute(_make_message("hi"))
+        assert result.content == "plain text response"
 
     @pytest.mark.asyncio
     @patch("dispatcher.executor.asyncio.create_subprocess_exec")
@@ -262,7 +371,7 @@ class TestClaudeExecutorCustomBin:
     @pytest.mark.asyncio
     @patch("dispatcher.executor.asyncio.create_subprocess_exec")
     async def test_custom_binary(self, mock_exec):
-        proc = _make_proc_mock(stdout=b"ok")
+        proc = _make_proc_mock(stdout=_make_claude_json("ok"))
         mock_exec.return_value = proc
 
         executor = ClaudeExecutor(claude_bin="/usr/local/bin/claude")
