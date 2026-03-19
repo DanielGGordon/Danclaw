@@ -18,6 +18,7 @@ from dispatcher.models import StandardMessage
 from dispatcher.repository import Repository
 from dispatcher.session_manager import SessionManager
 from dispatcher.socket_server import SocketServer
+from tests.conftest import make_config
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────
@@ -38,7 +39,7 @@ async def dispatcher(db):
     """Dispatcher with default MockExecutor (echo mode)."""
     repo = Repository(db)
     mgr = SessionManager(repo)
-    return Dispatcher(mgr, repo, MockExecutor(), agent_name="test-agent")
+    return Dispatcher(mgr, repo, MockExecutor(), config=make_config("test-agent"))
 
 
 @pytest_asyncio.fixture
@@ -305,7 +306,7 @@ async def test_dispatch_error_returns_error_response(db, socket_path):
 
     repo = Repository(db)
     mgr = SessionManager(repo)
-    dispatcher = Dispatcher(mgr, repo, _FailingExecutor(), agent_name="test")
+    dispatcher = Dispatcher(mgr, repo, _FailingExecutor(), config=make_config("test"))
 
     srv = SocketServer(dispatcher, socket_path)
     await srv.start()

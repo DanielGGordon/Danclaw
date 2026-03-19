@@ -31,6 +31,7 @@ from dispatcher.models import StandardMessage
 from dispatcher.repository import Repository
 from dispatcher.session_manager import SessionManager
 from dispatcher.socket_server import SocketServer
+from tests.conftest import make_config
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -88,7 +89,7 @@ def server_env(tmp_path):
 
         repo = Repository(conn)
         mgr = SessionManager(repo)
-        disp = Dispatcher(mgr, repo, MockExecutor(), agent_name="test-agent")
+        disp = Dispatcher(mgr, repo, MockExecutor(), config=make_config("test-agent"))
 
         srv = SocketServer(disp, socket_path)
         server[0] = srv

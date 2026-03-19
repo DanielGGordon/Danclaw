@@ -10,8 +10,10 @@ from dispatcher.database import _SCHEMA_SQL
 from dispatcher.dispatcher import Dispatcher, DispatchResult
 from dispatcher.executor import ExecutorResult, MockExecutor
 from dispatcher.models import StandardMessage
+from config import AgentConfig, DanClawConfig
 from dispatcher.repository import Repository
 from dispatcher.session_manager import SessionManager
+from tests.conftest import make_config
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────
@@ -39,7 +41,7 @@ async def mgr(repo):
 @pytest_asyncio.fixture
 async def dispatcher(mgr, repo):
     """Dispatcher with default MockExecutor (echo mode)."""
-    return Dispatcher(mgr, repo, MockExecutor(), agent_name="test-agent")
+    return Dispatcher(mgr, repo, MockExecutor(), config=make_config("test-agent"))
 
 
 def _msg(
@@ -149,7 +151,7 @@ class _FailingExecutor:
 
 @pytest.mark.asyncio
 async def test_dispatch_sets_error_state_on_executor_failure(mgr, repo):
-    dispatcher = Dispatcher(mgr, repo, _FailingExecutor(), agent_name="agent")
+    dispatcher = Dispatcher(mgr, repo, _FailingExecutor(), config=make_config("agent"))
     with pytest.raises(RuntimeError, match="backend crashed"):
         await dispatcher.dispatch(_msg())
 
@@ -164,7 +166,7 @@ async def test_dispatch_sets_error_state_on_executor_failure(mgr, repo):
 
 @pytest.mark.asyncio
 async def test_dispatch_stores_user_message_before_executor_error(mgr, repo):
-    dispatcher = Dispatcher(mgr, repo, _FailingExecutor(), agent_name="agent")
+    dispatcher = Dispatcher(mgr, repo, _FailingExecutor(), config=make_config("agent"))
     with pytest.raises(RuntimeError):
         await dispatcher.dispatch(_msg(content="should persist"))
 
@@ -181,7 +183,7 @@ async def test_dispatch_stores_user_message_before_executor_error(mgr, repo):
 @pytest.mark.asyncio
 async def test_dispatch_with_fixed_response_executor(mgr, repo):
     executor = MockExecutor(fixed_response="I am a bot.")
-    dispatcher = Dispatcher(mgr, repo, executor, agent_name="bot")
+    dispatcher = Dispatcher(mgr, repo, executor, config=make_config("bot"))
     result = await dispatcher.dispatch(_msg(content="anything"))
     assert result.response == "I am a bot."
     assert result.backend == "mock"
@@ -190,7 +192,7 @@ async def test_dispatch_with_fixed_response_executor(mgr, repo):
 # ── DispatchResult frozen ────────────────────────────────────────────
 
 def test_dispatch_result_is_frozen():
-    dr = DispatchResult(session_id="s1", response="hi", backend="mock")
+    dr = DispatchResult(session_id="s1", response="hi", backend="mock", agent_name="test")
     with pytest.raises(AttributeError):
         dr.response = "changed"  # type: ignore[misc]
 
@@ -202,7 +204,7 @@ async def test_full_round_trip_with_followup(mgr, repo):
     """Send a message, get a response, send a follow-up, verify session
     continuity and all messages are persisted in order."""
     executor = MockExecutor()
-    dispatcher = Dispatcher(mgr, repo, executor, agent_name="agent")
+    dispatcher = Dispatcher(mgr, repo, executor, config=make_config("agent"))
 
     r1 = await dispatcher.dispatch(_msg(content="hello"))
     assert r1.response == "mock response: hello"
@@ -226,3 +228,57 @@ async def test_full_round_trip_with_followup(mgr, repo):
     session = await mgr.get_session(r1.session_id)
     assert session is not None
     assert session.state == "ACTIVE"
+
+
+# ── Config-driven agent resolution ──────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_default_agent_selected_from_config(mgr, repo):
+    """Dispatcher selects the default (first) agent from config."""
+    config = DanClawConfig(
+        agents=[
+            AgentConfig(name="primary", persona="default", backend_preference=["claude"]),
+            AgentConfig(name="secondary", persona="default", backend_preference=["codex"]),
+        ],
+    )
+    dispatcher = Dispatcher(mgr, repo, MockExecutor(), config=config)
+    result = await dispatcher.dispatch(_msg(content="hello"))
+    assert result.agent_name == "primary"
+
+
+@pytest.mark.asyncio
+async def test_agent_name_stored_in_session(mgr, repo):
+    """The resolved agent name is stored in the session row."""
+    config = make_config("my-agent")
+    dispatcher = Dispatcher(mgr, repo, MockExecutor(), config=config)
+    result = await dispatcher.dispatch(_msg(content="hello"))
+
+    session = await mgr.get_session(result.session_id)
+    assert session is not None
+    assert session.agent_name == "my-agent"
+
+
+@pytest.mark.asyncio
+async def test_agent_name_in_dispatch_result(mgr, repo):
+    """DispatchResult includes the agent name that handled the message."""
+    config = make_config("resolver-agent")
+    dispatcher = Dispatcher(mgr, repo, MockExecutor(), config=config)
+    result = await dispatcher.dispatch(_msg(content="hello"))
+    assert result.agent_name == "resolver-agent"
+
+
+@pytest.mark.asyncio
+async def test_agent_name_consistent_across_session(mgr, repo):
+    """Multiple dispatches on the same session report the same agent name."""
+    config = make_config("consistent-agent")
+    dispatcher = Dispatcher(mgr, repo, MockExecutor(), config=config)
+
+    r1 = await dispatcher.dispatch(_msg(content="first"))
+    r2 = await dispatcher.dispatch(_msg(content="second"))
+
+    assert r1.agent_name == "consistent-agent"
+    assert r2.agent_name == "consistent-agent"
+    assert r1.session_id == r2.session_id
+
+    session = await mgr.get_session(r1.session_id)
+    assert session.agent_name == "consistent-agent"

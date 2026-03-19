@@ -24,6 +24,29 @@ class DanClawConfig:
     agents: list[AgentConfig]
     listeners: dict = field(default_factory=dict)
 
+    @property
+    def default_agent(self) -> AgentConfig:
+        """Return the first agent in the list as the default.
+
+        Raises
+        ------
+        ConfigError
+            If there are no agents configured.
+        """
+        if not self.agents:
+            raise ConfigError("No agents configured")
+        return self.agents[0]
+
+    def get_agent(self, name: str) -> AgentConfig | None:
+        """Look up an agent by name.
+
+        Returns ``None`` if no agent with that name exists.
+        """
+        for agent in self.agents:
+            if agent.name == name:
+                return agent
+        return None
+
 
 class ConfigError(Exception):
     """Raised when the config file is invalid or cannot be loaded."""

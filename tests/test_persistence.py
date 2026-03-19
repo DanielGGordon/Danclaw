@@ -20,6 +20,7 @@ from dispatcher.executor import MockExecutor
 from dispatcher.models import StandardMessage
 from dispatcher.repository import Repository
 from dispatcher.session_manager import SessionManager
+from tests.conftest import make_config
 
 
 def _msg(
@@ -58,7 +59,7 @@ async def test_messages_persist_across_restart():
         conn1 = await _init_db(db_path)
         repo1 = Repository(conn1)
         mgr1 = SessionManager(repo1)
-        dispatcher1 = Dispatcher(mgr1, repo1, MockExecutor(), agent_name="agent-a")
+        dispatcher1 = Dispatcher(mgr1, repo1, MockExecutor(), config=make_config("agent-a"))
 
         r1 = await dispatcher1.dispatch(_msg(content="first message"))
         r2 = await dispatcher1.dispatch(_msg(content="second message"))
@@ -106,7 +107,7 @@ async def test_messages_persist_across_restart():
         # ── Phase 2b: dispatch through a new Dispatcher ──────────────
         mgr2 = SessionManager(repo2)
         dispatcher2 = Dispatcher(
-            mgr2, repo2, MockExecutor(), agent_name="agent-a",
+            mgr2, repo2, MockExecutor(), config=make_config("agent-a"),
         )
 
         # Same channel should reuse the persisted session
@@ -134,7 +135,7 @@ async def test_multiple_sessions_persist():
         conn1 = await _init_db(db_path)
         repo1 = Repository(conn1)
         mgr1 = SessionManager(repo1)
-        dispatcher1 = Dispatcher(mgr1, repo1, MockExecutor(), agent_name="bot")
+        dispatcher1 = Dispatcher(mgr1, repo1, MockExecutor(), config=make_config("bot"))
 
         r_a = await dispatcher1.dispatch(_msg(channel_ref="chan-a", content="hello A"))
         r_b = await dispatcher1.dispatch(_msg(channel_ref="chan-b", content="hello B"))
