@@ -38,7 +38,12 @@ danclaw/
 │   └── README.md             # Module documentation
 ├── listeners/
 │   ├── __init__.py           # Python package marker
-│   └── README.md             # Module documentation
+│   ├── README.md             # Module documentation
+│   └── slack/
+│       ├── __init__.py       # Re-exports SlackListener
+│       ├── listener.py       # SlackListener: Socket Mode listener using slack-bolt
+│       ├── __main__.py       # Entry point for running as standalone process
+│       └── README.md         # Module documentation
 ├── personas/
 │   ├── __init__.py           # Re-exports load_persona, PersonaError
 │   ├── loader.py             # Persona loader: reads markdown files by name
@@ -59,7 +64,8 @@ danclaw/
 - **cli/**: Command-line interface. `agent chat` starts an interactive session over the dispatcher's Unix domain socket. `agent list` displays all sessions in a formatted table. `agent attach <session-id>` attaches to an existing session, displays its history, then enters a chat loop.
 - **config/**: Configuration loading and validation. Reads JSON config defining agents (name, persona, backend_preference, allowed_tools), listeners, and permissions (per-channel tools/override, per-user additional tools).
 - **dispatcher/**: Core message routing, session management, permission checks, AI executor invocation.
-- **listeners/**: Channel adapters (terminal, Slack, Twilio) that translate to/from StandardMessage.
+- **listeners/**: Channel adapters that translate to/from StandardMessage. Contains sub-modules per channel.
+  - **listeners/slack/**: Slack Socket Mode listener using `slack-bolt`. Connects via `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN`, converts Slack events to StandardMessage, and forwards to dispatcher via Unix socket. Maps thread_ts to channel_ref for session grouping.
 - **personas/**: Markdown files used as system prompts for agents. Referenced by name in config. Includes a loader module (`load_persona`) that reads persona files by name and returns their content as strings.
 - **tools/**: Standalone scripts invokable by agents, registered per-agent in config.
 - **tests/**: All test files. Mirrors the source module structure.

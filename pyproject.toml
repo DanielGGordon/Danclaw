@@ -10,6 +10,8 @@ requires-python = ">=3.11"
 dependencies = [
     "aiosqlite",
     "aiohttp",
+    "slack-bolt",
+    "slack-sdk",
 ]
 
 [project.optional-dependencies]
