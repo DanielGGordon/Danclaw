@@ -55,10 +55,65 @@ class ConfigError(Exception):
 _REQUIRED_AGENT_FIELDS = ("name", "persona", "backend_preference")
 
 
+def validate_config(
+    config: DanClawConfig,
+    *,
+    personas_dir: str | Path,
+    tools_dir: str | Path,
+) -> None:
+    """Validate that all agent references resolve to real files.
+
+    Checks every agent's persona file exists in *personas_dir* and every
+    tool listed in ``allowed_tools`` has a matching script in *tools_dir*.
+    All errors are collected and reported together so the caller can fix
+    everything in one pass.
+
+    Args:
+        config: A loaded :class:`DanClawConfig` to validate.
+        personas_dir: Directory containing persona markdown files.
+        tools_dir: Directory containing tool scripts.
+
+    Raises:
+        ConfigError: If any referenced persona files or tool scripts are missing.
+            The message lists every missing item.
+    """
+    personas_dir = Path(personas_dir)
+    tools_dir = Path(tools_dir)
+    errors: list[str] = []
+
+    for idx, agent in enumerate(config.agents):
+        # Check persona file
+        persona_file = personas_dir / f"{agent.persona}.md"
+        if not persona_file.exists():
+            errors.append(
+                f"agents[{idx}] ({agent.name}): persona file not found: {persona_file}"
+            )
+
+        # Check tool scripts
+        for tool_name in agent.allowed_tools:
+            # Look for any file matching the tool name (with or without extension)
+            matches = list(tools_dir.glob(f"{tool_name}*"))
+            # Filter to actual tool scripts (not directories, not __pycache__, etc.)
+            tool_files = [
+                m for m in matches
+                if m.is_file() and m.stem == tool_name
+            ]
+            if not tool_files:
+                errors.append(
+                    f"agents[{idx}] ({agent.name}): tool script not found "
+                    f"for '{tool_name}' in {tools_dir}"
+                )
+
+    if errors:
+        detail = "; ".join(errors)
+        raise ConfigError(f"Config validation failed: {detail}")
+
+
 def load_config(
     config_path: str | Path,
     *,
     personas_dir: str | Path | None = None,
+    tools_dir: str | Path | None = None,
 ) -> DanClawConfig:
     """Load and validate the JSON config file.
 
@@ -66,6 +121,8 @@ def load_config(
         config_path: Path to the JSON config file.
         personas_dir: Path to the personas directory. Defaults to
             ``<config_path>/../personas``.
+        tools_dir: Path to the tools directory. Defaults to
+            ``<config_path>/../tools``.
 
     Returns:
         A validated :class:`DanClawConfig` instance.
@@ -78,6 +135,10 @@ def load_config(
         personas_dir = config_path.parent.parent / "personas"
     else:
         personas_dir = Path(personas_dir)
+    if tools_dir is None:
+        tools_dir = config_path.parent.parent / "tools"
+    else:
+        tools_dir = Path(tools_dir)
 
     # --- Read file ---
     if not config_path.exists():
@@ -150,13 +211,6 @@ def load_config(
                     f"agents[{idx}] ({name}): 'allowed_tools' entries must be non-empty strings"
                 )
 
-        # Validate persona file exists
-        persona_file = personas_dir / f"{persona}.md"
-        if not persona_file.exists():
-            raise ConfigError(
-                f"agents[{idx}] ({name}): persona file not found: {persona_file}"
-            )
-
         agents.append(
             AgentConfig(
                 name=name,
@@ -171,4 +225,9 @@ def load_config(
     if not isinstance(listeners, dict):
         raise ConfigError("'listeners' must be a JSON object")
 
-    return DanClawConfig(agents=agents, listeners=listeners)
+    config = DanClawConfig(agents=agents, listeners=listeners)
+
+    # Validate that all referenced persona files and tool scripts exist.
+    validate_config(config, personas_dir=personas_dir, tools_dir=tools_dir)
+
+    return config

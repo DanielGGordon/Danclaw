@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from config.loader import AgentConfig, ConfigError, DanClawConfig, load_config
+from config.loader import AgentConfig, ConfigError, DanClawConfig, load_config, validate_config
 
 
 @pytest.fixture()
@@ -20,10 +20,14 @@ def tmp_project(tmp_path: Path):
     config_dir = tmp_path / "config"
     config_dir.mkdir()
 
+    tools_dir = tmp_path / "tools"
+    tools_dir.mkdir()
+
     class _Project:
         root = tmp_path
         personas = personas_dir
         config = config_dir
+        tools = tools_dir
 
         def write_config(self, data: dict) -> Path:
             p = self.config / "danclaw.json"
@@ -32,6 +36,10 @@ def tmp_project(tmp_path: Path):
 
         def add_persona(self, name: str, content: str = "persona text") -> None:
             (self.personas / f"{name}.md").write_text(content)
+
+        def add_tool(self, name: str, ext: str = ".py") -> None:
+            """Create a stub tool script in the tools directory."""
+            (self.tools / f"{name}{ext}").write_text(f"# stub tool: {name}")
 
     return _Project()
 
@@ -53,7 +61,7 @@ def test_load_valid_config(tmp_project):
             "listeners": {},
         }
     )
-    cfg = load_config(path, personas_dir=tmp_project.personas)
+    cfg = load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
 
     assert isinstance(cfg, DanClawConfig)
     assert len(cfg.agents) == 1
@@ -66,6 +74,8 @@ def test_load_valid_config(tmp_project):
 
 def test_load_multiple_agents(tmp_project):
     tmp_project.add_persona("coder")
+    tmp_project.add_tool("git")
+    tmp_project.add_tool("obsidian")
     path = tmp_project.write_config(
         {
             "agents": [
@@ -83,7 +93,7 @@ def test_load_multiple_agents(tmp_project):
             ],
         }
     )
-    cfg = load_config(path, personas_dir=tmp_project.personas)
+    cfg = load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
     assert len(cfg.agents) == 2
     assert cfg.agents[1].name == "coder"
     assert cfg.agents[1].allowed_tools == ["git", "obsidian"]
@@ -101,7 +111,7 @@ def test_allowed_tools_default_to_empty(tmp_project):
             ],
         }
     )
-    cfg = load_config(path, personas_dir=tmp_project.personas)
+    cfg = load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
     assert cfg.agents[0].allowed_tools == []
 
 
@@ -117,7 +127,7 @@ def test_listeners_default_to_empty(tmp_project):
             ],
         }
     )
-    cfg = load_config(path, personas_dir=tmp_project.personas)
+    cfg = load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
     assert cfg.listeners == {}
 
 
@@ -133,14 +143,14 @@ def test_invalid_json(tmp_project):
     path = tmp_project.config / "danclaw.json"
     path.write_text("{bad json")
     with pytest.raises(ConfigError, match="Invalid JSON"):
-        load_config(path, personas_dir=tmp_project.personas)
+        load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
 
 
 def test_top_level_not_object(tmp_project):
     path = tmp_project.config / "danclaw.json"
     path.write_text(json.dumps([1, 2, 3]))
     with pytest.raises(ConfigError, match="JSON object at the top level"):
-        load_config(path, personas_dir=tmp_project.personas)
+        load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
 
 
 # ── agents validation ──────────────────────────────────────────────────
@@ -149,25 +159,25 @@ def test_top_level_not_object(tmp_project):
 def test_missing_agents_key(tmp_project):
     path = tmp_project.write_config({"listeners": {}})
     with pytest.raises(ConfigError, match="missing required key: 'agents'"):
-        load_config(path, personas_dir=tmp_project.personas)
+        load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
 
 
 def test_agents_not_a_list(tmp_project):
     path = tmp_project.write_config({"agents": "not a list"})
     with pytest.raises(ConfigError, match="'agents' must be a list"):
-        load_config(path, personas_dir=tmp_project.personas)
+        load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
 
 
 def test_agents_empty_list(tmp_project):
     path = tmp_project.write_config({"agents": []})
     with pytest.raises(ConfigError, match="must not be empty"):
-        load_config(path, personas_dir=tmp_project.personas)
+        load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
 
 
 def test_agent_not_a_dict(tmp_project):
     path = tmp_project.write_config({"agents": ["not a dict"]})
     with pytest.raises(ConfigError, match="must be a JSON object"):
-        load_config(path, personas_dir=tmp_project.personas)
+        load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
 
 
 # ── Missing required agent fields ──────────────────────────────────────
@@ -183,7 +193,7 @@ def test_agent_missing_required_field(tmp_project, missing_field):
     del agent[missing_field]
     path = tmp_project.write_config({"agents": [agent]})
     with pytest.raises(ConfigError, match=f"missing required field '{missing_field}'"):
-        load_config(path, personas_dir=tmp_project.personas)
+        load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
 
 
 # ── Type validation ────────────────────────────────────────────────────
@@ -198,7 +208,7 @@ def test_agent_name_empty_string(tmp_project):
         }
     )
     with pytest.raises(ConfigError, match="'name' must be a non-empty string"):
-        load_config(path, personas_dir=tmp_project.personas)
+        load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
 
 
 def test_agent_backend_preference_empty(tmp_project):
@@ -210,7 +220,7 @@ def test_agent_backend_preference_empty(tmp_project):
         }
     )
     with pytest.raises(ConfigError, match="'backend_preference' must be a non-empty list"):
-        load_config(path, personas_dir=tmp_project.personas)
+        load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
 
 
 def test_agent_backend_preference_not_strings(tmp_project):
@@ -222,7 +232,7 @@ def test_agent_backend_preference_not_strings(tmp_project):
         }
     )
     with pytest.raises(ConfigError, match="entries must be strings"):
-        load_config(path, personas_dir=tmp_project.personas)
+        load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
 
 
 def test_agent_allowed_tools_not_a_list(tmp_project):
@@ -239,7 +249,7 @@ def test_agent_allowed_tools_not_a_list(tmp_project):
         }
     )
     with pytest.raises(ConfigError, match="'allowed_tools' must be a list"):
-        load_config(path, personas_dir=tmp_project.personas)
+        load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
 
 
 def test_agent_allowed_tools_entries_must_be_strings(tmp_project):
@@ -256,7 +266,7 @@ def test_agent_allowed_tools_entries_must_be_strings(tmp_project):
         }
     )
     with pytest.raises(ConfigError, match="'allowed_tools' entries must be non-empty strings"):
-        load_config(path, personas_dir=tmp_project.personas)
+        load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
 
 
 def test_agent_allowed_tools_empty_string_rejected(tmp_project):
@@ -273,7 +283,7 @@ def test_agent_allowed_tools_empty_string_rejected(tmp_project):
         }
     )
     with pytest.raises(ConfigError, match="'allowed_tools' entries must be non-empty strings"):
-        load_config(path, personas_dir=tmp_project.personas)
+        load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
 
 
 def test_agent_duplicate_names_rejected(tmp_project):
@@ -294,7 +304,7 @@ def test_agent_duplicate_names_rejected(tmp_project):
         }
     )
     with pytest.raises(ConfigError, match="duplicate agent name"):
-        load_config(path, personas_dir=tmp_project.personas)
+        load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
 
 
 def test_listeners_not_a_dict(tmp_project):
@@ -307,7 +317,7 @@ def test_listeners_not_a_dict(tmp_project):
         }
     )
     with pytest.raises(ConfigError, match="'listeners' must be a JSON object"):
-        load_config(path, personas_dir=tmp_project.personas)
+        load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
 
 
 # ── Persona file validation ────────────────────────────────────────────
@@ -326,7 +336,132 @@ def test_missing_persona_file(tmp_project):
         }
     )
     with pytest.raises(ConfigError, match="persona file not found"):
-        load_config(path, personas_dir=tmp_project.personas)
+        load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
+
+
+# ── Config validation (personas + tools) ─────────────────────────────
+
+
+def test_validate_config_valid(tmp_project):
+    """Valid config with existing persona and tools passes validation."""
+    tmp_project.add_tool("git")
+    tmp_project.add_tool("obsidian")
+    config = DanClawConfig(
+        agents=[
+            AgentConfig(
+                name="default",
+                persona="default",
+                backend_preference=["claude"],
+                allowed_tools=["git", "obsidian"],
+            ),
+        ],
+    )
+    # Should not raise
+    validate_config(
+        config, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools
+    )
+
+
+def test_validate_config_missing_persona(tmp_project):
+    """Missing persona file produces a clear error."""
+    config = DanClawConfig(
+        agents=[
+            AgentConfig(
+                name="ghost",
+                persona="nonexistent",
+                backend_preference=["claude"],
+            ),
+        ],
+    )
+    with pytest.raises(ConfigError, match="persona file not found.*nonexistent"):
+        validate_config(
+            config, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools
+        )
+
+
+def test_validate_config_missing_tool(tmp_project):
+    """Missing tool script produces a clear error."""
+    config = DanClawConfig(
+        agents=[
+            AgentConfig(
+                name="default",
+                persona="default",
+                backend_preference=["claude"],
+                allowed_tools=["no_such_tool"],
+            ),
+        ],
+    )
+    with pytest.raises(ConfigError, match="tool script not found.*no_such_tool"):
+        validate_config(
+            config, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools
+        )
+
+
+def test_validate_config_multiple_missing_items(tmp_project):
+    """All missing personas and tools are reported in a single error."""
+    config = DanClawConfig(
+        agents=[
+            AgentConfig(
+                name="agent_a",
+                persona="missing_persona_a",
+                backend_preference=["claude"],
+                allowed_tools=["missing_tool_x"],
+            ),
+            AgentConfig(
+                name="agent_b",
+                persona="missing_persona_b",
+                backend_preference=["claude"],
+                allowed_tools=["missing_tool_y"],
+            ),
+        ],
+    )
+    with pytest.raises(ConfigError) as exc_info:
+        validate_config(
+            config, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools
+        )
+    msg = str(exc_info.value)
+    assert "missing_persona_a" in msg
+    assert "missing_persona_b" in msg
+    assert "missing_tool_x" in msg
+    assert "missing_tool_y" in msg
+
+
+def test_validate_config_tool_with_extension(tmp_project):
+    """Tool scripts with various extensions are found correctly."""
+    tmp_project.add_tool("git", ext=".sh")
+    tmp_project.add_tool("obsidian", ext=".py")
+    config = DanClawConfig(
+        agents=[
+            AgentConfig(
+                name="default",
+                persona="default",
+                backend_preference=["claude"],
+                allowed_tools=["git", "obsidian"],
+            ),
+        ],
+    )
+    # Should not raise
+    validate_config(
+        config, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools
+    )
+
+
+def test_load_config_rejects_missing_tool(tmp_project):
+    """load_config also catches missing tools via validate_config."""
+    path = tmp_project.write_config(
+        {
+            "agents": [
+                {
+                    "name": "default",
+                    "persona": "default",
+                    "backend_preference": ["claude"],
+                    "allowed_tools": ["nonexistent_tool"],
+                }
+            ]
+        }
+    )
+    with pytest.raises(ConfigError, match="tool script not found.*nonexistent_tool"):
+        load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
 
 
 # ── Default personas_dir resolution ────────────────────────────────────
@@ -357,7 +492,7 @@ def test_config_is_immutable(tmp_project):
             ]
         }
     )
-    cfg = load_config(path, personas_dir=tmp_project.personas)
+    cfg = load_config(path, personas_dir=tmp_project.personas, tools_dir=tmp_project.tools)
     with pytest.raises(AttributeError):
         cfg.agents = []
     with pytest.raises(AttributeError):
