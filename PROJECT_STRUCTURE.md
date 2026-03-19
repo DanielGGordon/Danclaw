@@ -61,6 +61,7 @@ danclaw/
 │   ├── obsidian_search.py    # Search/list files in an Obsidian vault by name or content (subprocess tool)
 │   ├── git_ops.py            # Git add, commit, push operations (admin tool)
 │   ├── deploy.py             # Deploy tool: pull, rebuild, restart services (admin tool)
+│   ├── instrumented.py       # Telemetry-instrumented wrappers for all tool functions
 │   └── README.md             # Module documentation
 ├── scripts/
 │   └── e2e_test.py           # Standalone end-to-end smoke test (requires claude CLI)
@@ -70,6 +71,8 @@ danclaw/
     ├── test_e2e_claude.py    # End-to-end integration test via ClaudeExecutor (manual marker)
     ├── test_git_ops.py       # Tests for git add/commit/push tool functions and CLI
     ├── test_git_ops_telemetry.py # Tests for telemetry-instrumented git operation wrappers
+    ├── test_deploy.py          # Tests for deploy tool: pull, build, restart sequence
+    ├── test_deploy_telemetry.py # Tests for telemetry-instrumented deploy wrapper
     └── test_telemetry_query.py # Tests for telemetry query/filter/pagination methods
 ```
 
