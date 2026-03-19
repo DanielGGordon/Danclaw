@@ -484,9 +484,10 @@ class TestHandleMessage:
             )
 
     def test_handle_message_calls_send_to_dispatcher(self, listener):
-        """_handle_message converts and sends valid messages."""
+        """_handle_message converts and sends valid DM messages."""
         event = {
-            "channel": "C123",
+            "channel": "D123",
+            "channel_type": "im",
             "user": "U456",
             "text": "hello",
             "ts": "1234567890.123456",
@@ -615,9 +616,10 @@ class TestThreadedReply:
         say.assert_not_called()
 
     def test_handle_message_replies_in_thread_for_top_level(self, listener):
-        """_handle_message replies in a new thread for top-level messages."""
+        """_handle_message replies in a new thread for top-level DM messages."""
         event = {
-            "channel": "C123",
+            "channel": "D123",
+            "channel_type": "im",
             "user": "U456",
             "text": "hello",
             "ts": "1234567890.123456",
@@ -638,7 +640,8 @@ class TestThreadedReply:
     def test_handle_message_replies_in_existing_thread(self, listener):
         """_handle_message replies in the existing thread when thread_ts is set."""
         event = {
-            "channel": "C123",
+            "channel": "D123",
+            "channel_type": "im",
             "user": "U456",
             "text": "follow-up",
             "ts": "1234567891.000000",

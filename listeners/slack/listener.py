@@ -173,6 +173,9 @@ class SlackListener:
         If the dispatcher returns a response, replies in the same thread
         (or creates one for top-level messages).
         """
+        if event.get("channel_type") != "im":
+            return
+
         msg = self.message_to_standard(event)
         if msg is None:
             return
