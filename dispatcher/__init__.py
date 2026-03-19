@@ -3,6 +3,7 @@ from dispatcher.dispatcher import Dispatcher, DispatchResult
 from dispatcher.executor import (
     ClaudeExecutor,
     CodexExecutor,
+    Executor,
     ExecutorResult,
     FallbackExecutor,
     MockExecutor,
@@ -29,6 +30,7 @@ __all__ = [
     "SessionManager",
     "ClaudeExecutor",
     "CodexExecutor",
+    "Executor",
     "ExecutorResult",
     "FallbackExecutor",
     "MockExecutor",
