@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Callable, Protocol
 
 from dispatcher.models import StandardMessage
 
@@ -254,6 +254,8 @@ def build_executor(
     backend_preference: list[str],
     *,
     timeout: int | None = None,
+    fallback_notification: str = "silent",
+    notification_callback: Callable[[str], None] | None = None,
 ) -> FallbackExecutor:
     """Build a :class:`FallbackExecutor` from a list of backend names.
 
@@ -271,6 +273,13 @@ def build_executor(
         Maximum seconds each executor may run.  Passed through to
         :class:`ClaudeExecutor` and :class:`CodexExecutor`.  ``None``
         means no timeout.  Defaults to ``None``.
+    fallback_notification:
+        Controls notification on fallback.  ``"silent"`` (default)
+        suppresses notification, ``"notify"`` uses a standard message,
+        or a custom string.  Passed through to :class:`FallbackExecutor`.
+    notification_callback:
+        Optional callable invoked with notification text on fallback.
+        Passed through to :class:`FallbackExecutor`.
 
     Returns
     -------
@@ -302,7 +311,14 @@ def build_executor(
             executors.append(cls(timeout=timeout))
         else:
             executors.append(cls())
-    return FallbackExecutor(executors)
+    return FallbackExecutor(
+        executors,
+        fallback_notification=fallback_notification,
+        notification_callback=notification_callback,
+    )
+
+
+_FALLBACK_NOTIFY_TEXT = "[Switched to backup AI]"
 
 
 class FallbackExecutor:
@@ -312,17 +328,46 @@ class FallbackExecutor:
     executor raises any exception, it is logged and the next executor is
     tried.  If all executors fail, the last exception is re-raised.
 
+    When a fallback occurs (i.e. a non-primary executor succeeds),
+    the optional *notification_callback* is invoked with the
+    notification text.  The notification text is then prepended to
+    the response content.
+
     Parameters
     ----------
     executors:
         Ordered list of executor instances to try.  Must contain at
         least one executor.
+    fallback_notification:
+        Controls notification behaviour on fallback.  ``"silent"``
+        (default) suppresses notification, ``"notify"`` uses a
+        standard message, or a custom string to use as the
+        notification text.
+    notification_callback:
+        Optional callable invoked with the notification text when a
+        fallback occurs (and the mode is not ``"silent"``).
     """
 
-    def __init__(self, executors: list) -> None:
+    def __init__(
+        self,
+        executors: list,
+        *,
+        fallback_notification: str = "silent",
+        notification_callback: Callable[[str], None] | None = None,
+    ) -> None:
         if not executors:
             raise ValueError("FallbackExecutor requires at least one executor")
         self._executors = list(executors)
+        self._fallback_notification = fallback_notification
+        self._notification_callback = notification_callback
+
+    def _resolve_notification(self) -> str | None:
+        """Return the notification text, or ``None`` for silent mode."""
+        if self._fallback_notification == "silent":
+            return None
+        if self._fallback_notification == "notify":
+            return _FALLBACK_NOTIFY_TEXT
+        return self._fallback_notification
 
     async def execute(
         self,
@@ -335,13 +380,26 @@ class FallbackExecutor:
 
         Returns the result from the first executor that succeeds.
         If all executors fail, raises the exception from the last one.
+        If a fallback executor succeeds, the configured notification
+        text is prepended to the response content.
         """
         last_exc: Exception | None = None
-        for executor in self._executors:
+        for idx, executor in enumerate(self._executors):
             try:
-                return await executor.execute(
+                result = await executor.execute(
                     message, persona=persona, allowed_tools=allowed_tools,
                 )
+                if idx > 0:
+                    # A fallback executor succeeded
+                    note = self._resolve_notification()
+                    if note is not None:
+                        if self._notification_callback is not None:
+                            self._notification_callback(note)
+                        result = ExecutorResult(
+                            content=f"{note}\n\n{result.content}",
+                            backend=result.backend,
+                        )
+                return result
             except Exception as exc:
                 logger.warning(
                     "Executor %s failed: %s; trying next fallback",

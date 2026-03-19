@@ -654,3 +654,196 @@ class TestBuildExecutorTimeout:
         assert executor._executors[0]._timeout == 90
         assert executor._executors[1]._timeout == 90
         assert not hasattr(executor._executors[2], "_timeout")
+
+
+# ── Fallback notification tests ──────────────────────────────────────
+
+class TestFallbackNotificationSilent:
+    """Silent mode: no notification text prepended, no callback called."""
+
+    @pytest.mark.asyncio
+    async def test_silent_is_default(self):
+        failing = MockExecutor()
+        async def _raise(*a, **kw):
+            raise RuntimeError("primary failed")
+        failing.execute = _raise
+
+        backup = MockExecutor(fixed_response="backup response")
+        executor = FallbackExecutor([failing, backup])
+        result = await executor.execute(_make_message("hi"))
+        assert result.content == "backup response"
+
+    @pytest.mark.asyncio
+    async def test_silent_explicit(self):
+        failing = MockExecutor()
+        async def _raise(*a, **kw):
+            raise RuntimeError("primary failed")
+        failing.execute = _raise
+
+        backup = MockExecutor(fixed_response="backup response")
+        executor = FallbackExecutor(
+            [failing, backup], fallback_notification="silent",
+        )
+        result = await executor.execute(_make_message("hi"))
+        assert result.content == "backup response"
+
+    @pytest.mark.asyncio
+    async def test_silent_no_callback(self):
+        failing = MockExecutor()
+        async def _raise(*a, **kw):
+            raise RuntimeError("primary failed")
+        failing.execute = _raise
+
+        calls = []
+        backup = MockExecutor(fixed_response="backup")
+        executor = FallbackExecutor(
+            [failing, backup],
+            fallback_notification="silent",
+            notification_callback=lambda text: calls.append(text),
+        )
+        await executor.execute(_make_message("hi"))
+        assert calls == []
+
+
+class TestFallbackNotificationNotify:
+    """Notify mode: standard message prepended, callback called."""
+
+    @pytest.mark.asyncio
+    async def test_notify_prepends_standard_message(self):
+        failing = MockExecutor()
+        async def _raise(*a, **kw):
+            raise RuntimeError("primary failed")
+        failing.execute = _raise
+
+        backup = MockExecutor(fixed_response="backup response")
+        executor = FallbackExecutor(
+            [failing, backup], fallback_notification="notify",
+        )
+        result = await executor.execute(_make_message("hi"))
+        assert result.content == "[Switched to backup AI]\n\nbackup response"
+
+    @pytest.mark.asyncio
+    async def test_notify_calls_callback(self):
+        failing = MockExecutor()
+        async def _raise(*a, **kw):
+            raise RuntimeError("primary failed")
+        failing.execute = _raise
+
+        calls = []
+        backup = MockExecutor(fixed_response="ok")
+        executor = FallbackExecutor(
+            [failing, backup],
+            fallback_notification="notify",
+            notification_callback=lambda text: calls.append(text),
+        )
+        await executor.execute(_make_message("hi"))
+        assert calls == ["[Switched to backup AI]"]
+
+    @pytest.mark.asyncio
+    async def test_notify_preserves_backend(self):
+        failing = MockExecutor()
+        async def _raise(*a, **kw):
+            raise RuntimeError("primary failed")
+        failing.execute = _raise
+
+        backup = MockExecutor(fixed_response="ok")
+        executor = FallbackExecutor(
+            [failing, backup], fallback_notification="notify",
+        )
+        result = await executor.execute(_make_message("hi"))
+        assert result.backend == "mock"
+
+
+class TestFallbackNotificationCustom:
+    """Custom string mode: custom text prepended, callback called."""
+
+    @pytest.mark.asyncio
+    async def test_custom_text_prepended(self):
+        failing = MockExecutor()
+        async def _raise(*a, **kw):
+            raise RuntimeError("primary failed")
+        failing.execute = _raise
+
+        backup = MockExecutor(fixed_response="fallback answer")
+        executor = FallbackExecutor(
+            [failing, backup],
+            fallback_notification="Using alternate model due to outage.",
+        )
+        result = await executor.execute(_make_message("hi"))
+        assert result.content == "Using alternate model due to outage.\n\nfallback answer"
+
+    @pytest.mark.asyncio
+    async def test_custom_text_calls_callback(self):
+        failing = MockExecutor()
+        async def _raise(*a, **kw):
+            raise RuntimeError("primary failed")
+        failing.execute = _raise
+
+        calls = []
+        backup = MockExecutor(fixed_response="ok")
+        executor = FallbackExecutor(
+            [failing, backup],
+            fallback_notification="Custom notice",
+            notification_callback=lambda text: calls.append(text),
+        )
+        await executor.execute(_make_message("hi"))
+        assert calls == ["Custom notice"]
+
+
+class TestFallbackNotificationPrimarySuccess:
+    """When the primary executor succeeds, no notification regardless of mode."""
+
+    @pytest.mark.asyncio
+    async def test_no_notification_on_primary_success_notify(self):
+        primary = MockExecutor(fixed_response="primary response")
+        backup = MockExecutor(fixed_response="backup response")
+        calls = []
+        executor = FallbackExecutor(
+            [primary, backup],
+            fallback_notification="notify",
+            notification_callback=lambda text: calls.append(text),
+        )
+        result = await executor.execute(_make_message("hi"))
+        assert result.content == "primary response"
+        assert calls == []
+
+    @pytest.mark.asyncio
+    async def test_no_notification_on_primary_success_custom(self):
+        primary = MockExecutor(fixed_response="primary")
+        backup = MockExecutor(fixed_response="backup")
+        executor = FallbackExecutor(
+            [primary, backup],
+            fallback_notification="Custom notice",
+        )
+        result = await executor.execute(_make_message("hi"))
+        assert result.content == "primary"
+
+
+class TestBuildExecutorFallbackNotification:
+    """build_executor passes fallback_notification through."""
+
+    def test_default_is_silent(self):
+        executor = build_executor(["claude", "codex"])
+        assert executor._fallback_notification == "silent"
+
+    def test_notify_mode(self):
+        executor = build_executor(
+            ["claude", "codex"], fallback_notification="notify",
+        )
+        assert executor._fallback_notification == "notify"
+
+    def test_custom_mode(self):
+        executor = build_executor(
+            ["claude", "codex"],
+            fallback_notification="Backup AI is responding.",
+        )
+        assert executor._fallback_notification == "Backup AI is responding."
+
+    def test_callback_passed_through(self):
+        calls = []
+        executor = build_executor(
+            ["claude", "codex"],
+            fallback_notification="notify",
+            notification_callback=lambda text: calls.append(text),
+        )
+        assert executor._notification_callback is not None

@@ -607,3 +607,107 @@ class TestAgentConfigTimeout:
                 personas_dir=tmp_project.personas,
                 tools_dir=tmp_project.tools,
             )
+
+
+# ── AgentConfig fallback_notification field ──────────────────────────
+
+
+class TestAgentConfigFallbackNotification:
+    def test_default_is_silent(self):
+        agent = AgentConfig(
+            name="a", persona="default", backend_preference=["claude"],
+        )
+        assert agent.fallback_notification == "silent"
+
+    def test_notify_mode(self):
+        agent = AgentConfig(
+            name="a", persona="default", backend_preference=["claude"],
+            fallback_notification="notify",
+        )
+        assert agent.fallback_notification == "notify"
+
+    def test_custom_string(self):
+        agent = AgentConfig(
+            name="a", persona="default", backend_preference=["claude"],
+            fallback_notification="Using backup model.",
+        )
+        assert agent.fallback_notification == "Using backup model."
+
+    def test_loaded_from_json(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "default",
+                "persona": "default",
+                "backend_preference": ["claude"],
+                "fallback_notification": "notify",
+            }],
+        })
+        cfg = load_config(
+            tmp_project.config / "danclaw.json",
+            personas_dir=tmp_project.personas,
+            tools_dir=tmp_project.tools,
+        )
+        assert cfg.agents[0].fallback_notification == "notify"
+
+    def test_defaults_to_silent_when_omitted(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "default",
+                "persona": "default",
+                "backend_preference": ["claude"],
+            }],
+        })
+        cfg = load_config(
+            tmp_project.config / "danclaw.json",
+            personas_dir=tmp_project.personas,
+            tools_dir=tmp_project.tools,
+        )
+        assert cfg.agents[0].fallback_notification == "silent"
+
+    def test_custom_string_loaded_from_json(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "default",
+                "persona": "default",
+                "backend_preference": ["claude"],
+                "fallback_notification": "Backup AI is responding.",
+            }],
+        })
+        cfg = load_config(
+            tmp_project.config / "danclaw.json",
+            personas_dir=tmp_project.personas,
+            tools_dir=tmp_project.tools,
+        )
+        assert cfg.agents[0].fallback_notification == "Backup AI is responding."
+
+    def test_empty_string_raises_config_error(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "bad",
+                "persona": "default",
+                "backend_preference": ["claude"],
+                "fallback_notification": "",
+            }],
+        })
+        with pytest.raises(ConfigError, match="fallback_notification.*non-empty string"):
+            load_config(
+                tmp_project.config / "danclaw.json",
+                personas_dir=tmp_project.personas,
+                tools_dir=tmp_project.tools,
+            )
+
+    def test_non_string_raises_config_error(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "bad",
+                "persona": "default",
+                "backend_preference": ["claude"],
+                "fallback_notification": 42,
+            }],
+        })
+        with pytest.raises(ConfigError, match="fallback_notification.*non-empty string"):
+            load_config(
+                tmp_project.config / "danclaw.json",
+                personas_dir=tmp_project.personas,
+                tools_dir=tmp_project.tools,
+            )

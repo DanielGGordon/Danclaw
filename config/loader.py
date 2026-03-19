@@ -63,6 +63,11 @@ class AgentConfig:
         allowed_tools: Tools this agent may use.
         timeout: Maximum seconds an executor may run before being
             cancelled.  Defaults to 120.
+        fallback_notification: Controls user notification when a fallback
+            backend is used.  ``"silent"`` suppresses notification,
+            ``"notify"`` prepends a standard message
+            (``"[Switched to backup AI]"``), or a custom string to use
+            as the notification text.  Defaults to ``"silent"``.
     """
 
     name: str
@@ -70,6 +75,7 @@ class AgentConfig:
     backend_preference: list[str]
     allowed_tools: list[str] = field(default_factory=list)
     timeout: int = 120
+    fallback_notification: str = "silent"
 
 
 @dataclass(frozen=True)
@@ -339,6 +345,7 @@ def load_config(
         backend_preference = agent_data["backend_preference"]
         allowed_tools = agent_data.get("allowed_tools", [])
         timeout = agent_data.get("timeout", 120)
+        fallback_notification = agent_data.get("fallback_notification", "silent")
 
         # Type checks
         if not isinstance(name, str) or not name:
@@ -368,6 +375,10 @@ def load_config(
             raise ConfigError(
                 f"agents[{idx}] ({name}): 'timeout' must be a positive integer"
             )
+        if not isinstance(fallback_notification, str) or not fallback_notification:
+            raise ConfigError(
+                f"agents[{idx}] ({name}): 'fallback_notification' must be a non-empty string"
+            )
 
         agents.append(
             AgentConfig(
@@ -376,6 +387,7 @@ def load_config(
                 backend_preference=list(backend_preference),
                 allowed_tools=list(allowed_tools),
                 timeout=timeout,
+                fallback_notification=fallback_notification,
             )
         )
 
