@@ -103,7 +103,7 @@ Agents become real entities loaded from config. Each agent has a name, a persona
 - [x] Agent's persona is injected as context when invoking the executor
 - [x] Persona switching: a user can request a different persona within a session, and subsequent messages use the new persona
 - [x] Config validation: startup fails with a clear error if an agent references a missing persona or tool
-- [ ] Default agent configured for when no specific agent is matched
+- [x] Default agent configured for when no specific agent is matched
 
 ---
 
@@ -117,7 +117,7 @@ The three-layer permission resolver. Channel permissions define the baseline. Us
 
 ### Acceptance criteria
 
-- [ ] Permission definitions in JSON config: per-channel (tools, override flag), per-user (additional tools)
+- [x] Permission definitions in JSON config: per-channel (tools, override flag), per-user (additional tools)
 - [ ] Permission resolver: given a channel + user, compute the effective permission set
 - [ ] Override flag: when true, user permissions are ignored — only channel permissions apply
 - [ ] Approval gates: configurable per channel/persona/user — when enabled, high-impact actions require confirmation

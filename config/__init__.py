@@ -1,8 +1,27 @@
 """Config package: loading and validation of the DanClaw JSON config.
 
-Re-exports load_config, validate_config, DanClawConfig, AgentConfig, ConfigError.
+Re-exports load_config, validate_config, DanClawConfig, AgentConfig,
+ChannelPermissions, UserPermissions, PermissionsConfig, ConfigError.
 """
 
-from config.loader import AgentConfig, ConfigError, DanClawConfig, load_config, validate_config
+from config.loader import (
+    AgentConfig,
+    ChannelPermissions,
+    ConfigError,
+    DanClawConfig,
+    PermissionsConfig,
+    UserPermissions,
+    load_config,
+    validate_config,
+)
 
-__all__ = ["AgentConfig", "ConfigError", "DanClawConfig", "load_config", "validate_config"]
+__all__ = [
+    "AgentConfig",
+    "ChannelPermissions",
+    "ConfigError",
+    "DanClawConfig",
+    "PermissionsConfig",
+    "UserPermissions",
+    "load_config",
+    "validate_config",
+]

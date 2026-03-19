@@ -7,5 +7,22 @@
       "allowed_tools": []
     }
   ],
-  "listeners": {}
+  "listeners": {},
+  "permissions": {
+    "channels": {
+      "terminal": {
+        "allowed_tools": ["git", "obsidian"],
+        "override": false
+      },
+      "slack": {
+        "allowed_tools": ["obsidian"],
+        "override": true
+      }
+    },
+    "users": {
+      "dan": {
+        "additional_tools": ["git", "deploy"]
+      }
+    }
+  }
 }

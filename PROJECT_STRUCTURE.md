@@ -52,7 +52,7 @@ danclaw/
 ## Module Descriptions
 
 - **cli/**: Command-line interface. `agent chat` starts an interactive session over the dispatcher's Unix domain socket. `agent list` displays all sessions in a formatted table. `agent attach <session-id>` attaches to an existing session, displays its history, then enters a chat loop.
-- **config/**: Configuration loading and validation. Reads JSON config defining agents (name, persona, backend_preference, allowed_tools), listeners, and permissions.
+- **config/**: Configuration loading and validation. Reads JSON config defining agents (name, persona, backend_preference, allowed_tools), listeners, and permissions (per-channel tools/override, per-user additional tools).
 - **dispatcher/**: Core message routing, session management, permission checks, AI executor invocation.
 - **listeners/**: Channel adapters (terminal, Slack, Twilio) that translate to/from StandardMessage.
 - **personas/**: Markdown files used as system prompts for agents. Referenced by name in config. Includes a loader module (`load_persona`) that reads persona files by name and returns their content as strings.
