@@ -58,6 +58,11 @@ def search_files(
         if not path.is_file():
             continue
 
+        # Prevent symlink-based escapes outside the vault.
+        resolved = path.resolve()
+        if not str(resolved).startswith(str(vault) + "/"):
+            continue
+
         # Skip hidden files/directories (e.g., .obsidian/, .git/).
         relative = path.relative_to(vault)
         if any(part.startswith(".") for part in relative.parts):
