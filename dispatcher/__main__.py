@@ -89,24 +89,24 @@ async def _run(
 
         # Start the socket server
         await server.start()
-        logger.info(
-            "Dispatcher ready — %d agent(s) loaded: %s",
-            len(config.agents),
-            ", ".join(a.name for a in config.agents),
-        )
-
-        # Set up signal-driven shutdown
-        loop = asyncio.get_running_loop()
-        shutdown_event = asyncio.Event()
-
-        def _signal_handler() -> None:
-            logger.info("Shutdown signal received")
-            shutdown_event.set()
-
-        for sig in (signal.SIGTERM, signal.SIGINT):
-            loop.add_signal_handler(sig, _signal_handler)
-
         try:
+            logger.info(
+                "Dispatcher ready — %d agent(s) loaded: %s",
+                len(config.agents),
+                ", ".join(a.name for a in config.agents),
+            )
+
+            # Set up signal-driven shutdown
+            loop = asyncio.get_running_loop()
+            shutdown_event = asyncio.Event()
+
+            def _signal_handler() -> None:
+                logger.info("Shutdown signal received")
+                shutdown_event.set()
+
+            for sig in (signal.SIGTERM, signal.SIGINT):
+                loop.add_signal_handler(sig, _signal_handler)
+
             await shutdown_event.wait()
         finally:
             await server.stop()
