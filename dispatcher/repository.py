@@ -157,6 +157,23 @@ class Repository:
             return None
         return await self.get_session(session_id)
 
+    async def update_session_agent(
+        self, session_id: str, agent_name: str,
+    ) -> Optional[SessionRow]:
+        """Update a session's agent_name and return the updated row.
+
+        Returns ``None`` if the session does not exist.
+        """
+        now = _utcnow()
+        cursor = await self._db.execute(
+            "UPDATE sessions SET agent_name = ?, updated_at = ? WHERE id = ?",
+            (agent_name, now, session_id),
+        )
+        await self._db.commit()
+        if cursor.rowcount == 0:
+            return None
+        return await self.get_session(session_id)
+
     async def list_sessions(
         self, *, state: Optional[str] = None
     ) -> list[SessionRow]:

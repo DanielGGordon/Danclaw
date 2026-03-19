@@ -27,6 +27,25 @@ from personas import load_persona, PersonaError
 logger = logging.getLogger(__name__)
 
 
+def _parse_switch_command(content: str) -> str | None:
+    """Extract the target agent name from a persona switch command.
+
+    Recognised forms:
+
+    * ``/switch <agent>``
+    * ``switch to <agent>``
+
+    Returns the target agent name (stripped), or ``None`` if the content
+    is not a switch command.
+    """
+    lower = content.strip().lower()
+    if lower.startswith("/switch "):
+        return content.strip()[len("/switch "):].strip()
+    if lower.startswith("switch to "):
+        return content.strip()[len("switch to "):].strip()
+    return None
+
+
 @dataclass(frozen=True)
 class DispatchResult:
     """Value object returned after dispatching a message.
@@ -111,7 +130,27 @@ class Dispatcher:
         agent = self._config.default_agent
         agent_name = agent.name
 
-        # 1b. Load persona for the resolved agent
+        # 2. Find or create session
+        session = await self._session_manager.get_or_create_session(
+            message, agent_name,
+        )
+        session_id = session.id
+
+        # 2b. Handle persona switch commands
+        switch_target = _parse_switch_command(message.content)
+        if switch_target is not None:
+            return await self._handle_switch(
+                message, session_id, switch_target,
+            )
+
+        # 2c. If session already has an agent, use that agent's config
+        #     (supports post-switch messages using the switched persona)
+        session_agent = self._config.get_agent(session.agent_name)
+        if session_agent is not None:
+            agent = session_agent
+            agent_name = agent.name
+
+        # 3. Load persona for the resolved agent
         persona_content: str | None = None
         try:
             persona_content = load_persona(
@@ -125,17 +164,12 @@ class Dispatcher:
                 agent.persona, agent_name,
             )
 
-        # 2. Find or create session
-        session = await self._session_manager.get_or_create_session(
-            message, agent_name,
-        )
-        session_id = session.id
         logger.info(
             "Dispatching message to session %s (agent=%s)",
             session_id, agent_name,
         )
 
-        # 3. Store inbound message
+        # 4. Store inbound message
         await self._repo.save_message(
             session_id=session_id,
             role="user",
@@ -145,7 +179,7 @@ class Dispatcher:
             user_id=message.user_id,
         )
 
-        # 4. Execute
+        # 5. Execute
         try:
             result: ExecutorResult = await self._executor.execute(
                 message, persona=persona_content,
@@ -157,7 +191,7 @@ class Dispatcher:
             await self._session_manager.update_state(session_id, "ERROR")
             raise
 
-        # 5. Store response
+        # 6. Store response
         await self._repo.save_message(
             session_id=session_id,
             role="assistant",
@@ -172,10 +206,85 @@ class Dispatcher:
             session_id, result.backend,
         )
 
-        # 6. Return result
+        # 7. Return result
         return DispatchResult(
             session_id=session_id,
             response=result.content,
             backend=result.backend,
             agent_name=agent_name,
+        )
+
+    async def _handle_switch(
+        self,
+        message: StandardMessage,
+        session_id: str,
+        target_name: str,
+    ) -> DispatchResult:
+        """Handle a persona switch command within a session.
+
+        Validates that the target agent exists in the config, updates the
+        session's agent_name, and returns a confirmation response.  If the
+        target agent is not found, returns an error message without
+        changing the session.
+        """
+        target_agent = self._config.get_agent(target_name)
+        if target_agent is None:
+            error_msg = (
+                f"Unknown agent '{target_name}'. "
+                f"Available agents: "
+                f"{', '.join(a.name for a in self._config.agents)}"
+            )
+            # Store the switch command as a user message
+            await self._repo.save_message(
+                session_id=session_id,
+                role="user",
+                content=message.content,
+                source=message.source,
+                channel_ref=message.channel_ref,
+                user_id=message.user_id,
+            )
+            # Store the error as an assistant message
+            await self._repo.save_message(
+                session_id=session_id,
+                role="assistant",
+                content=error_msg,
+                source=message.source,
+                channel_ref=message.channel_ref,
+                user_id="system",
+            )
+            session = await self._session_manager.get_session(session_id)
+            return DispatchResult(
+                session_id=session_id,
+                response=error_msg,
+                backend="system",
+                agent_name=session.agent_name,
+            )
+
+        # Update session agent
+        await self._session_manager.update_agent(session_id, target_agent.name)
+
+        confirm_msg = f"Switched to agent '{target_agent.name}'."
+        # Store the switch command as a user message
+        await self._repo.save_message(
+            session_id=session_id,
+            role="user",
+            content=message.content,
+            source=message.source,
+            channel_ref=message.channel_ref,
+            user_id=message.user_id,
+        )
+        # Store the confirmation as an assistant message
+        await self._repo.save_message(
+            session_id=session_id,
+            role="assistant",
+            content=confirm_msg,
+            source=message.source,
+            channel_ref=message.channel_ref,
+            user_id="system",
+        )
+        return DispatchResult(
+            session_id=session_id,
+            response=confirm_msg,
+            backend="system",
+            agent_name=target_agent.name,
         )
