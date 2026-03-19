@@ -1,5 +1,8 @@
-"""Config package: loading and validation of the DanClaw JSON config."""
+"""Config package: loading and validation of the DanClaw JSON config.
 
-from config.loader import AgentConfig, ConfigError, DanClawConfig, load_config
+Re-exports load_config, validate_config, DanClawConfig, AgentConfig, ConfigError.
+"""
 
-__all__ = ["AgentConfig", "ConfigError", "DanClawConfig", "load_config"]
+from config.loader import AgentConfig, ConfigError, DanClawConfig, load_config, validate_config
+
+__all__ = ["AgentConfig", "ConfigError", "DanClawConfig", "load_config", "validate_config"]

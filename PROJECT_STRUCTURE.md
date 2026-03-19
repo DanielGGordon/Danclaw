@@ -19,7 +19,7 @@ danclaw/
 │   ├── agent.py              # CLI entry point: `agent chat`, `agent list`, and `agent attach` subcommands over Unix socket
 │   └── README.md             # Module documentation
 ├── config/
-│   ├── __init__.py           # Re-exports load_config, DanClawConfig, AgentConfig, ConfigError
+│   ├── __init__.py           # Re-exports load_config, validate_config, DanClawConfig, AgentConfig, ConfigError
 │   ├── loader.py             # Config loader: reads, validates, returns structured config
 │   ├── danclaw.json          # Main config: agent definitions, listener settings
 │   └── README.md             # Module documentation
