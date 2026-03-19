@@ -416,7 +416,7 @@ class TestAdminAgentDispatchGitOps:
     async def test_admin_channel_no_approval_gate(self, admin_dispatcher) -> None:
         """Admin channel dispatches directly without approval gate."""
         msg = StandardMessage(
-            source="terminal", channel_ref="admin",
+            source="admin", channel_ref="admin",
             user_id="dan", content="run git add",
         )
         result = await admin_dispatcher.dispatch(msg)
@@ -493,7 +493,7 @@ class TestAdminGitOpsToolAccess:
         # Set up repo with bare remote
         repo = tmp_path / "repo"
         repo.mkdir()
-        subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
+        subprocess.run(["git", "init", "-b", "master"], cwd=repo, capture_output=True, check=True)
         subprocess.run(
             ["git", "config", "user.email", "admin@danclaw.dev"],
             cwd=repo, capture_output=True, check=True,
