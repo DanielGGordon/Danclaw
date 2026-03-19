@@ -85,6 +85,10 @@ async def _run(
         from slack_sdk import WebClient
 
         slack_token = os.environ.get("SLACK_BOT_TOKEN", "")
+        if not slack_token:
+            raise ConfigError(
+                "SLACK_BOT_TOKEN must be set when telemetry.slack_log_channel is configured"
+            )
         slack_client = WebClient(token=slack_token)
         slack_sink = SlackLogSink(slack_client, config.telemetry.slack_log_channel)
         telemetry.add_sink(slack_sink)
