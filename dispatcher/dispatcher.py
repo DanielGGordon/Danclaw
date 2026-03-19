@@ -138,6 +138,18 @@ class Dispatcher:
         )
         session_id = session.id
 
+        # 2a. Resume from WAITING_FOR_HUMAN — transition back to ACTIVE
+        resumed_from_waiting = False
+        if session.state == "WAITING_FOR_HUMAN":
+            session = await self._session_manager.update_state(
+                session_id, "ACTIVE",
+            )
+            resumed_from_waiting = True
+            logger.info(
+                "Session %s resumed from WAITING_FOR_HUMAN to ACTIVE",
+                session_id,
+            )
+
         # 2b. Handle persona switch commands
         switch_target = _parse_switch_command(message.content)
         if switch_target is not None:
@@ -191,8 +203,10 @@ class Dispatcher:
             user_id=message.user_id,
         )
 
-        # 6. Approval gate — if approval is required, pause the session
-        if approval_needed:
+        # 6. Approval gate — if approval is required, pause the session.
+        #    Skip this gate when the session was just resumed from
+        #    WAITING_FOR_HUMAN — the human's reply *is* the approval.
+        if approval_needed and not resumed_from_waiting:
             await self._session_manager.update_state(
                 session_id, "WAITING_FOR_HUMAN",
             )

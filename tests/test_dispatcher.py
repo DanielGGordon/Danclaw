@@ -831,3 +831,143 @@ async def test_dispatch_permissions_resolved_on_each_call(mgr, repo, personas_di
 
     await dispatcher.dispatch(_msg(source="ch2", user_id="u1", channel_ref="ref2"))
     assert dispatcher._last_resolved_permissions == frozenset({"tool_y"})
+
+
+# ── WAITING_FOR_HUMAN resume ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_waiting_for_human_resumes_to_active_on_new_message(mgr, repo, personas_dir):
+    """A session in WAITING_FOR_HUMAN transitions to ACTIVE when a new
+    message arrives, and the message is processed normally."""
+    perms = PermissionsConfig(
+        channels={"slack": ChannelPermissions(
+            allowed_tools=["deploy"],
+            approval_required=True,
+        )},
+    )
+    config = _config_with_permissions(permissions=perms)
+    executor = MockExecutor()
+    dispatcher = Dispatcher(
+        mgr, repo, executor, config=config, personas_dir=personas_dir,
+    )
+
+    # First dispatch — triggers approval gate, session goes WAITING_FOR_HUMAN
+    r1 = await dispatcher.dispatch(_msg(source="slack", channel_ref="thread1", content="deploy it"))
+    session = await mgr.get_session(r1.session_id)
+    assert session.state == "WAITING_FOR_HUMAN"
+    assert executor.last_persona is None  # executor was not called
+
+    # Second dispatch — human reply in the same thread resumes the session
+    r2 = await dispatcher.dispatch(_msg(source="slack", channel_ref="thread1", content="approved"))
+    session = await mgr.get_session(r2.session_id)
+    assert session.state == "ACTIVE"
+    assert r2.session_id == r1.session_id
+    assert r2.response == "mock response: approved"
+    assert r2.backend == "mock"
+
+
+@pytest.mark.asyncio
+async def test_waiting_for_human_executor_called_on_resume(mgr, repo, personas_dir):
+    """When resuming from WAITING_FOR_HUMAN, the executor IS called with
+    the human's reply message."""
+    perms = PermissionsConfig(
+        channels={"slack": ChannelPermissions(
+            allowed_tools=["deploy"],
+            approval_required=True,
+        )},
+    )
+    config = _config_with_permissions(permissions=perms)
+    executor = MockExecutor()
+    dispatcher = Dispatcher(
+        mgr, repo, executor, config=config, personas_dir=personas_dir,
+    )
+
+    await dispatcher.dispatch(_msg(source="slack", channel_ref="thread1", content="do deploy"))
+    assert executor.last_persona is None  # not called on first dispatch
+
+    r2 = await dispatcher.dispatch(_msg(source="slack", channel_ref="thread1", content="go ahead"))
+    assert executor.last_persona is not None  # executor was called
+    assert r2.response == "mock response: go ahead"
+
+
+@pytest.mark.asyncio
+async def test_waiting_for_human_messages_accumulated(mgr, repo, personas_dir):
+    """All messages (initial, approval msg, resume) are stored in order."""
+    perms = PermissionsConfig(
+        channels={"slack": ChannelPermissions(
+            allowed_tools=["deploy"],
+            approval_required=True,
+        )},
+    )
+    config = _config_with_permissions(permissions=perms)
+    dispatcher = Dispatcher(
+        mgr, repo, MockExecutor(), config=config, personas_dir=personas_dir,
+    )
+
+    r1 = await dispatcher.dispatch(_msg(source="slack", channel_ref="thread1", content="deploy it"))
+    r2 = await dispatcher.dispatch(_msg(source="slack", channel_ref="thread1", content="approved"))
+
+    messages = await repo.get_messages_for_session(r1.session_id)
+    # deploy(user), approval_msg(assistant), approved(user), response(assistant)
+    assert len(messages) == 4
+    assert messages[0].role == "user"
+    assert messages[0].content == "deploy it"
+    assert messages[1].role == "assistant"
+    assert "approval" in messages[1].content.lower()
+    assert messages[2].role == "user"
+    assert messages[2].content == "approved"
+    assert messages[3].role == "assistant"
+    assert messages[3].content == "mock response: approved"
+
+
+@pytest.mark.asyncio
+async def test_waiting_for_human_with_explicit_session_id(mgr, repo, personas_dir):
+    """Resuming via explicit session_id also works for WAITING_FOR_HUMAN."""
+    perms = PermissionsConfig(
+        channels={"slack": ChannelPermissions(
+            allowed_tools=["deploy"],
+            approval_required=True,
+        )},
+    )
+    config = _config_with_permissions(permissions=perms)
+    executor = MockExecutor()
+    dispatcher = Dispatcher(
+        mgr, repo, executor, config=config, personas_dir=personas_dir,
+    )
+
+    r1 = await dispatcher.dispatch(_msg(source="slack", channel_ref="thread1", content="deploy"))
+    assert (await mgr.get_session(r1.session_id)).state == "WAITING_FOR_HUMAN"
+
+    # Resume using explicit session_id on a different channel_ref
+    r2 = await dispatcher.dispatch(
+        _msg(source="slack", channel_ref="other", content="yes", session_id=r1.session_id)
+    )
+    assert r2.session_id == r1.session_id
+    assert r2.response == "mock response: yes"
+    assert (await mgr.get_session(r1.session_id)).state == "ACTIVE"
+
+
+@pytest.mark.asyncio
+async def test_waiting_for_human_manual_state_also_resumes(mgr, repo, personas_dir):
+    """A session manually set to WAITING_FOR_HUMAN (not via approval gate)
+    also resumes to ACTIVE when a new message arrives."""
+    executor = MockExecutor()
+    config = make_config("agent")
+    dispatcher = Dispatcher(
+        mgr, repo, executor, config=config, personas_dir=personas_dir,
+    )
+
+    # Create a normal session
+    r1 = await dispatcher.dispatch(_msg(content="hello"))
+    assert (await mgr.get_session(r1.session_id)).state == "ACTIVE"
+
+    # Manually set it to WAITING_FOR_HUMAN (simulates bot asking a question)
+    await mgr.update_state(r1.session_id, "WAITING_FOR_HUMAN")
+    assert (await mgr.get_session(r1.session_id)).state == "WAITING_FOR_HUMAN"
+
+    # Send a reply — session should resume
+    r2 = await dispatcher.dispatch(_msg(content="my answer"))
+    assert r2.session_id == r1.session_id
+    assert r2.response == "mock response: my answer"
+    assert (await mgr.get_session(r1.session_id)).state == "ACTIVE"
