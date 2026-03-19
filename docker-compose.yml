@@ -5,9 +5,26 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
+    environment:
+      - DANCLAW_SOCKET=/run/danclaw/dispatcher.sock
     volumes:
       - sqlite-data:/app/data
+      - socket-dir:/run/danclaw
+    restart: unless-stopped
+
+  slack-listener:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["python", "-m", "listeners.slack", "--socket-path", "/run/danclaw/dispatcher.sock"]
+    env_file:
+      - .env
+    volumes:
+      - socket-dir:/run/danclaw
+    depends_on:
+      - dispatcher
     restart: unless-stopped
 
 volumes:
   sqlite-data:
+  socket-dir:
