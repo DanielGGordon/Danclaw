@@ -5,6 +5,12 @@
       "persona": "default",
       "backend_preference": ["claude", "codex"],
       "allowed_tools": []
+    },
+    {
+      "name": "admin",
+      "persona": "admin",
+      "backend_preference": ["claude", "codex"],
+      "allowed_tools": ["obsidian_read", "obsidian_write", "obsidian_search", "git_ops", "deploy"]
     }
   ],
   "listeners": {},
@@ -23,6 +29,11 @@
         "allowed_tools": ["obsidian"],
         "override": true,
         "approval_required": true
+      },
+      "admin": {
+        "allowed_tools": ["git", "obsidian", "deploy", "git_ops"],
+        "override": false,
+        "approval_required": false
       }
     },
     "users": {
