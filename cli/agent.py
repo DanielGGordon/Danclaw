@@ -29,8 +29,10 @@ import argparse
 import json
 import logging
 import os
+import select
 import socket
 import sys
+import threading
 import uuid
 
 from logging_config import setup_logging
@@ -75,15 +77,53 @@ def _connect(socket_path: str) -> socket.socket:
     return sock
 
 
-def _send_recv(sock: socket.socket, message: dict) -> dict:
+def _read_json_line(sock: socket.socket, buf: bytearray) -> dict:
+    """Read a single newline-delimited JSON object from *sock*.
+
+    Uses *buf* as a carry-over buffer for partial reads.  On return,
+    *buf* contains any bytes remaining after the first complete line.
+
+    Raises
+    ------
+    ConnectionError
+        If the server closes the connection before a complete line.
+    """
+    while b"\n" not in buf:
+        chunk = sock.recv(4096)
+        if not chunk:
+            raise ConnectionError("Server closed the connection")
+        buf.extend(chunk)
+
+    idx = buf.index(b"\n")
+    line = bytes(buf[:idx])
+    del buf[:idx + 1]
+    return json.loads(line)
+
+
+def _send_recv(
+    sock: socket.socket,
+    message: dict,
+    *,
+    print_fn=None,
+    buf: bytearray | None = None,
+) -> dict:
     """Send a JSON line and read back the JSON response.
+
+    Any server-pushed fanout messages received before the actual response
+    are printed via *print_fn* and skipped.  The first non-fanout JSON
+    line is returned as the response.
 
     Parameters
     ----------
     sock:
         A connected Unix domain socket.
     message:
-        A dict representing the StandardMessage.
+        A dict representing the StandardMessage or control request.
+    print_fn:
+        Callable for printing fanout messages (default: builtin ``print``).
+    buf:
+        Shared byte buffer for the connection.  If ``None``, a temporary
+        buffer is used (fine for one-shot connections).
 
     Returns
     -------
@@ -95,21 +135,67 @@ def _send_recv(sock: socket.socket, message: dict) -> dict:
     ConnectionError
         If the server closes the connection unexpectedly.
     """
+    if print_fn is None:
+        print_fn = print
+    if buf is None:
+        buf = bytearray()
+
     line = json.dumps(message) + "\n"
     sock.sendall(line.encode("utf-8"))
 
-    # Read response until newline
-    buf = b""
     while True:
-        chunk = sock.recv(4096)
-        if not chunk:
-            raise ConnectionError("Server closed the connection")
-        buf += chunk
-        if b"\n" in buf:
-            break
+        resp = _read_json_line(sock, buf)
+        if resp.get("type") == "fanout":
+            _print_fanout(resp, print_fn)
+            continue
+        return resp
 
-    response_line = buf.split(b"\n", 1)[0]
-    return json.loads(response_line)
+
+def _print_fanout(msg: dict, print_fn) -> None:
+    """Print a fanout push message to the terminal."""
+    source = msg.get("source", "unknown")
+    response = msg.get("response", "")
+    if response:
+        print_fn(f"[{source}] agent> {response}\n")
+
+
+def _fanout_reader(
+    sock: socket.socket,
+    buf: bytearray,
+    print_fn,
+    stop_event: threading.Event,
+) -> None:
+    """Background thread that reads fanout push messages from the server.
+
+    Runs until *stop_event* is set.  Only reads when data is available
+    (via ``select``), so it won't block shutdown.
+    """
+    while not stop_event.is_set():
+        try:
+            readable, _, _ = select.select([sock], [], [], 0.2)
+        except (ValueError, OSError):
+            # Socket closed
+            break
+        if not readable:
+            continue
+        try:
+            chunk = sock.recv(4096)
+        except (ConnectionResetError, OSError):
+            break
+        if not chunk:
+            break
+        buf.extend(chunk)
+        # Process any complete lines in the buffer
+        while b"\n" in buf:
+            idx = buf.index(b"\n")
+            line = bytes(buf[:idx])
+            del buf[:idx + 1]
+            try:
+                msg = json.loads(line)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                continue
+            if msg.get("type") == "fanout":
+                _print_fanout(msg, print_fn)
 
 
 def _chat_loop(
@@ -120,6 +206,10 @@ def _chat_loop(
     print_fn=None,
 ) -> str:
     """Run the interactive chat read-eval-print loop.
+
+    Starts a background reader thread that prints fanout push messages
+    from the server (e.g. when a Slack message triggers a response on
+    a bridged session).
 
     Parameters
     ----------
@@ -144,6 +234,14 @@ def _chat_loop(
         print_fn = print
 
     channel_ref = f"cli-{uuid.uuid4().hex[:8]}"
+    buf = bytearray()
+    stop_event = threading.Event()
+    reader_thread = threading.Thread(
+        target=_fanout_reader,
+        args=(sock, buf, print_fn, stop_event),
+        daemon=True,
+    )
+    reader_thread.start()
 
     try:
         while True:
@@ -169,8 +267,12 @@ def _chat_loop(
             if session_id is not None:
                 msg["session_id"] = session_id
 
+            # Stop the reader while we do a synchronous send/recv
+            stop_event.set()
+            reader_thread.join(timeout=2)
+
             try:
-                resp = _send_recv(sock, msg)
+                resp = _send_recv(sock, msg, print_fn=print_fn, buf=buf)
             except ConnectionError as exc:
                 print_fn(f"\nConnection lost: {exc}")
                 break
@@ -180,8 +282,20 @@ def _chat_loop(
                 print_fn(f"agent> {resp['response']}\n")
             else:
                 print_fn(f"error> {resp.get('error', 'unknown error')}\n")
+
+            # Restart the reader thread
+            stop_event.clear()
+            reader_thread = threading.Thread(
+                target=_fanout_reader,
+                args=(sock, buf, print_fn, stop_event),
+                daemon=True,
+            )
+            reader_thread.start()
     except KeyboardInterrupt:
         print_fn("\nGoodbye.")
+    finally:
+        stop_event.set()
+        reader_thread.join(timeout=2)
 
     return channel_ref
 

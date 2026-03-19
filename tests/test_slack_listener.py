@@ -654,6 +654,26 @@ class TestThreadedReply:
         listener._reply_in_thread({"content": ""}, {"ts": "1111.000"}, say)
         say.assert_not_called()
 
+    def test_reply_in_thread_uses_response_key(self, listener):
+        """_reply_in_thread accepts the 'response' key from the socket server."""
+        say = MagicMock()
+        event = {"ts": "1111.000"}
+        response = {"ok": True, "response": "Hello from dispatcher!"}
+
+        listener._reply_in_thread(response, event, say)
+
+        say.assert_called_once_with(text="Hello from dispatcher!", thread_ts="1111.000")
+
+    def test_reply_in_thread_prefers_response_over_content(self, listener):
+        """When both 'response' and 'content' are present, 'response' is used."""
+        say = MagicMock()
+        event = {"ts": "1111.000"}
+        response = {"response": "from response key", "content": "from content key"}
+
+        listener._reply_in_thread(response, event, say)
+
+        say.assert_called_once_with(text="from response key", thread_ts="1111.000")
+
     def test_handle_message_replies_in_thread_for_top_level(self, listener):
         """_handle_message replies in a new thread for top-level messages."""
         event = {

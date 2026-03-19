@@ -659,3 +659,104 @@ def test_main_attach_subcommand(server_env):
     joined = "\n".join(output)
     assert "history" in joined.lower()
     assert "you> test" in joined
+
+
+# ── _print_fanout tests ────────────────────────────────────────────
+
+
+def test_print_fanout_formats_source_and_response():
+    """_print_fanout prints source attribution and response."""
+    from cli.agent import _print_fanout
+
+    output: list[str] = []
+    msg = {"type": "fanout", "source": "slack", "response": "hello from slack"}
+    _print_fanout(msg, output.append)
+    assert len(output) == 1
+    assert "[slack]" in output[0]
+    assert "hello from slack" in output[0]
+
+
+def test_print_fanout_empty_response_noop():
+    """_print_fanout does nothing for empty response."""
+    from cli.agent import _print_fanout
+
+    output: list[str] = []
+    _print_fanout({"type": "fanout", "source": "slack", "response": ""}, output.append)
+    assert len(output) == 0
+
+
+def test_print_fanout_missing_response_noop():
+    """_print_fanout does nothing when response key is missing."""
+    from cli.agent import _print_fanout
+
+    output: list[str] = []
+    _print_fanout({"type": "fanout", "source": "slack"}, output.append)
+    assert len(output) == 0
+
+
+# ── _read_json_line tests ──────────────────────────────────────────
+
+
+def test_read_json_line_complete_line():
+    """_read_json_line parses a complete JSON line from the buffer."""
+    from cli.agent import _read_json_line
+    from unittest.mock import MagicMock
+
+    buf = bytearray(b'{"ok": true}\n')
+    # sock.recv should not be called since the line is already in buf
+    sock = MagicMock()
+    result = _read_json_line(sock, buf)
+    assert result == {"ok": True}
+    assert len(buf) == 0
+    sock.recv.assert_not_called()
+
+
+def test_read_json_line_partial_reads():
+    """_read_json_line handles data arriving in multiple chunks."""
+    from cli.agent import _read_json_line
+    from unittest.mock import MagicMock
+
+    buf = bytearray()
+    sock = MagicMock()
+    sock.recv.side_effect = [b'{"ok":', b' true}\n']
+    result = _read_json_line(sock, buf)
+    assert result == {"ok": True}
+    assert len(buf) == 0
+
+
+def test_read_json_line_preserves_remaining_data():
+    """_read_json_line leaves extra data in the buffer."""
+    from cli.agent import _read_json_line
+    from unittest.mock import MagicMock
+
+    buf = bytearray(b'{"a": 1}\n{"b": 2}\n')
+    sock = MagicMock()
+    result = _read_json_line(sock, buf)
+    assert result == {"a": 1}
+    assert buf == bytearray(b'{"b": 2}\n')
+
+
+# ── _send_recv fanout handling tests ───────────────────────────────
+
+
+def test_send_recv_skips_fanout_messages(server_env):
+    """_send_recv skips fanout messages and returns the actual response."""
+    # This is an integration test — fanout messages are server-pushed,
+    # so we test the skip logic at the unit level with a mock socket.
+    from cli.agent import _send_recv
+    from unittest.mock import MagicMock
+
+    fanout_line = json.dumps({"type": "fanout", "source": "slack", "response": "hi"}) + "\n"
+    response_line = json.dumps({"ok": True, "response": "real"}) + "\n"
+
+    sock = MagicMock()
+    sock.recv.side_effect = [
+        (fanout_line + response_line).encode("utf-8"),
+    ]
+
+    output: list[str] = []
+    result = _send_recv(sock, {"content": "test"}, print_fn=output.append)
+    assert result["ok"] is True
+    assert result["response"] == "real"
+    # Fanout message should have been printed
+    assert any("[slack]" in line for line in output)

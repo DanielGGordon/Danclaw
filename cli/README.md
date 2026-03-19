@@ -16,6 +16,7 @@ python -m cli.agent chat [--socket /path/to/socket]
 - Sends each user message as a `StandardMessage` JSON line.
 - Displays the agent's response.
 - Creates a new session on the first message and reuses it for subsequent messages.
+- Receives server-pushed fanout messages from bridged sessions (e.g. Slack messages for the same session are displayed in the terminal with `[slack] agent>` attribution).
 - Type `exit` or press Ctrl+C to quit.
 
 ### `agent list`
@@ -54,4 +55,4 @@ python -m cli.agent attach <session-id> [--socket /path/to/socket]
 ## Module Layout
 
 - `__init__.py` — Package marker.
-- `agent.py` — `agent` command with `chat`, `list`, and `attach` subcommands. Contains `chat()`, `list_sessions()`, `attach()`, `_chat_loop()`, `_format_sessions_table()`, `_format_history()`, `_connect()`, `_send_recv()`, `_build_message()`, and `main()`.
+- `agent.py` — `agent` command with `chat`, `list`, and `attach` subcommands. Contains `chat()`, `list_sessions()`, `attach()`, `_chat_loop()`, `_fanout_reader()`, `_print_fanout()`, `_read_json_line()`, `_format_sessions_table()`, `_format_history()`, `_connect()`, `_send_recv()`, `_build_message()`, and `main()`.
