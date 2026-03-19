@@ -19,7 +19,7 @@ def resolve_vault(vault: str | Path) -> Path:
 
 def is_path_within_vault(resolved: Path, vault: Path) -> bool:
     """Return ``True`` if *resolved* is inside (or equal to) *vault*."""
-    return str(resolved).startswith(str(vault) + "/") or resolved == vault
+    return resolved.is_relative_to(vault)
 
 
 def resolve_path_in_vault(vault: Path, file_path: str) -> Path:
