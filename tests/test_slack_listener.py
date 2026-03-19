@@ -79,7 +79,7 @@ class TestSlackListenerInit:
             MockApp.assert_called_once_with(token="xoxb-test-token")
 
     def test_init_registers_message_event_handler(self):
-        """SlackListener registers a message event handler on the App."""
+        """SlackListener registers message and app_mention event handlers."""
         with patch("listeners.slack.listener.App") as MockApp:
             from listeners.slack.listener import SlackListener
 
@@ -89,7 +89,9 @@ class TestSlackListenerInit:
                 bot_token="xoxb-test-token",
                 app_token="xapp-test-token",
             )
-            mock_app.event.assert_called_once_with("message")
+            event_calls = [c[0][0] for c in mock_app.event.call_args_list]
+            assert "message" in event_calls
+            assert "app_mention" in event_calls
 
 
 # ── Channel ref building ─────────────────────────────────────────────
@@ -255,6 +257,215 @@ class TestMessageToStandard:
         assert msg is None
 
 
+# ── Mention stripping ─────────────────────────────────────────────────
+
+
+class TestStripMention:
+    """Tests for SlackListener.strip_mention."""
+
+    def test_strip_specific_bot_mention(self):
+        """Strips a specific bot's <@BOT_ID> mention from text."""
+        from listeners.slack.listener import SlackListener
+
+        result = SlackListener.strip_mention("<@U123BOT> hello world", "U123BOT")
+        assert result == "hello world"
+
+    def test_strip_generic_mention_without_bot_id(self):
+        """Strips any leading <@...> mention when bot_user_id is None."""
+        from listeners.slack.listener import SlackListener
+
+        result = SlackListener.strip_mention("<@U999XYZ> do something", None)
+        assert result == "do something"
+
+    def test_no_mention_returns_unchanged(self):
+        """Text without a mention is returned unchanged."""
+        from listeners.slack.listener import SlackListener
+
+        result = SlackListener.strip_mention("just plain text", "U123BOT")
+        assert result == "just plain text"
+
+    def test_strip_mention_with_leading_whitespace(self):
+        """Leading whitespace before the mention is handled."""
+        from listeners.slack.listener import SlackListener
+
+        result = SlackListener.strip_mention("  <@U123BOT>  hello", "U123BOT")
+        assert result == "hello"
+
+    def test_strip_does_not_remove_wrong_bot_id(self):
+        """Only the specified bot_user_id mention is stripped."""
+        from listeners.slack.listener import SlackListener
+
+        result = SlackListener.strip_mention("<@UOTHER> hello", "U123BOT")
+        assert result == "<@UOTHER> hello"
+
+    def test_strip_only_leading_mention(self):
+        """Only the leading mention is stripped, not inline mentions."""
+        from listeners.slack.listener import SlackListener
+
+        result = SlackListener.strip_mention(
+            "<@U123BOT> hey <@U456OTHER> check this", "U123BOT"
+        )
+        assert result == "hey <@U456OTHER> check this"
+
+    def test_mention_only_returns_empty(self):
+        """A message that is just a mention results in empty string."""
+        from listeners.slack.listener import SlackListener
+
+        result = SlackListener.strip_mention("<@U123BOT>", "U123BOT")
+        assert result == ""
+
+
+# ── App mention handling ──────────────────────────────────────────────
+
+
+class TestAppMentionHandling:
+    """Tests for SlackListener._handle_app_mention."""
+
+    @pytest.fixture
+    def listener(self):
+        with patch("listeners.slack.listener.App"):
+            from listeners.slack.listener import SlackListener
+
+            listener = SlackListener(
+                socket_path="/tmp/test.sock",
+                bot_token="xoxb-test",
+                app_token="xapp-test",
+            )
+            listener._bot_user_id = "U123BOT"
+            return listener
+
+    def test_app_mention_strips_mention_and_dispatches(self, listener):
+        """app_mention events have the <@BOT_ID> stripped from content."""
+        event = {
+            "channel": "C123",
+            "user": "U456",
+            "text": "<@U123BOT> do something",
+            "ts": "1234567890.123456",
+        }
+        say = MagicMock()
+
+        with patch.object(listener, "_send_to_dispatcher") as mock_send:
+            listener._handle_app_mention(event, say)
+            mock_send.assert_called_once()
+            sent_msg = mock_send.call_args[0][0]
+            assert sent_msg.content == "do something"
+
+    def test_app_mention_builds_correct_channel_ref(self, listener):
+        """app_mention events produce the correct channel_ref."""
+        event = {
+            "channel": "C123",
+            "user": "U456",
+            "text": "<@U123BOT> hello",
+            "ts": "1234567890.123456",
+        }
+        say = MagicMock()
+
+        with patch.object(listener, "_send_to_dispatcher") as mock_send:
+            listener._handle_app_mention(event, say)
+            sent_msg = mock_send.call_args[0][0]
+            assert sent_msg.channel_ref == "C123:1234567890.123456"
+            assert sent_msg.source == "slack"
+
+    def test_app_mention_threaded_uses_thread_ts(self, listener):
+        """Threaded app_mention events use thread_ts in channel_ref."""
+        event = {
+            "channel": "C123",
+            "user": "U456",
+            "text": "<@U123BOT> reply",
+            "ts": "1234567891.000000",
+            "thread_ts": "1234567890.123456",
+        }
+        say = MagicMock()
+
+        with patch.object(listener, "_send_to_dispatcher") as mock_send:
+            listener._handle_app_mention(event, say)
+            sent_msg = mock_send.call_args[0][0]
+            assert sent_msg.channel_ref == "C123:1234567890.123456"
+
+    def test_app_mention_only_mention_returns_none(self, listener):
+        """An app_mention with only the mention and no text is ignored."""
+        event = {
+            "channel": "C123",
+            "user": "U456",
+            "text": "<@U123BOT>",
+            "ts": "1234567890.123456",
+        }
+        say = MagicMock()
+
+        with patch.object(listener, "_send_to_dispatcher") as mock_send:
+            listener._handle_app_mention(event, say)
+            mock_send.assert_not_called()
+
+    def test_app_mention_logs_send_failure(self, listener):
+        """_handle_app_mention catches and logs dispatcher send errors."""
+        event = {
+            "channel": "C123",
+            "user": "U456",
+            "text": "<@U123BOT> hello",
+            "ts": "1234567890.123456",
+        }
+        say = MagicMock()
+
+        with patch.object(
+            listener, "_send_to_dispatcher", side_effect=ConnectionRefusedError
+        ):
+            # Should not raise
+            listener._handle_app_mention(event, say)
+
+
+# ── DM handling ───────────────────────────────────────────────────────
+
+
+class TestDMHandling:
+    """Tests for DM (direct message) handling via the message event."""
+
+    @pytest.fixture
+    def listener(self):
+        with patch("listeners.slack.listener.App"):
+            from listeners.slack.listener import SlackListener
+
+            return SlackListener(
+                socket_path="/tmp/test.sock",
+                bot_token="xoxb-test",
+                app_token="xapp-test",
+            )
+
+    def test_dm_message_is_processed(self, listener):
+        """DM messages (channel_type=im) are forwarded to the dispatcher."""
+        event = {
+            "channel": "D123DM",
+            "channel_type": "im",
+            "user": "U456",
+            "text": "hello from DM",
+            "ts": "1234567890.123456",
+        }
+        say = MagicMock()
+
+        with patch.object(listener, "_send_to_dispatcher") as mock_send:
+            listener._handle_message(event, say)
+            mock_send.assert_called_once()
+            sent_msg = mock_send.call_args[0][0]
+            assert sent_msg.content == "hello from DM"
+            assert sent_msg.channel_ref == "D123DM:1234567890.123456"
+
+    def test_dm_does_not_strip_mention(self, listener):
+        """DM messages do not have mentions stripped (no should_strip_mention)."""
+        event = {
+            "channel": "D123DM",
+            "channel_type": "im",
+            "user": "U456",
+            "text": "<@U123BOT> hey bot",
+            "ts": "1234567890.123456",
+        }
+        say = MagicMock()
+
+        with patch.object(listener, "_send_to_dispatcher") as mock_send:
+            listener._handle_message(event, say)
+            sent_msg = mock_send.call_args[0][0]
+            # DM messages go through _handle_message which does NOT strip
+            assert sent_msg.content == "<@U123BOT> hey bot"
+
+
 # ── Message handling and dispatch ─────────────────────────────────────
 
 
@@ -367,10 +578,51 @@ class TestConnectionSetup:
             )
 
             mock_handler_instance = MockHandler.return_value
+            # Mock auth_test to return a bot user ID
+            MockApp.return_value.client.auth_test.return_value = {
+                "user_id": "U123BOT"
+            }
             listener.start()
 
             MockHandler.assert_called_once_with(MockApp.return_value, "xapp-test")
             mock_handler_instance.start.assert_called_once()
+
+    def test_start_resolves_bot_user_id(self):
+        """start() resolves the bot user ID via auth.test."""
+        with patch("listeners.slack.listener.App") as MockApp, \
+             patch("listeners.slack.listener.SocketModeHandler"):
+            from listeners.slack.listener import SlackListener
+
+            listener = SlackListener(
+                socket_path="/tmp/test.sock",
+                bot_token="xoxb-test",
+                app_token="xapp-test",
+            )
+
+            MockApp.return_value.client.auth_test.return_value = {
+                "user_id": "U999BOT"
+            }
+            listener.start()
+
+            assert listener._bot_user_id == "U999BOT"
+
+    def test_start_continues_if_auth_test_fails(self):
+        """start() still works if auth.test fails (generic pattern fallback)."""
+        with patch("listeners.slack.listener.App") as MockApp, \
+             patch("listeners.slack.listener.SocketModeHandler") as MockHandler:
+            from listeners.slack.listener import SlackListener
+
+            listener = SlackListener(
+                socket_path="/tmp/test.sock",
+                bot_token="xoxb-test",
+                app_token="xapp-test",
+            )
+
+            MockApp.return_value.client.auth_test.side_effect = Exception("API error")
+            listener.start()
+
+            assert listener._bot_user_id is None
+            MockHandler.return_value.start.assert_called_once()
 
     def test_stop_closes_handler(self):
         """stop() calls close() on the SocketModeHandler."""
