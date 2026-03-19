@@ -408,31 +408,6 @@ class FallbackExecutor:
                 result = await executor.execute(
                     message, persona=persona, allowed_tools=allowed_tools,
                 )
-                if idx > 0:
-                    # A fallback executor succeeded
-                    if self._telemetry is not None:
-                        try:
-                            self._telemetry.record(
-                                "fallback",
-                                {
-                                    "failed_backends": failed_backends,
-                                    "succeeded_backend": result.backend,
-                                },
-                            )
-                        except Exception:
-                            logger.warning(
-                                "Telemetry recording failed",
-                                exc_info=True,
-                            )
-                    note = self._resolve_notification()
-                    if note is not None:
-                        if self._notification_callback is not None:
-                            self._notification_callback(note)
-                        result = ExecutorResult(
-                            content=f"{note}\n\n{result.content}",
-                            backend=result.backend,
-                        )
-                return result
             except Exception as exc:
                 backend_label = type(executor).__name__
                 failed_backends.append(
@@ -444,4 +419,30 @@ class FallbackExecutor:
                     exc,
                 )
                 last_exc = exc
+                continue
+            if idx > 0:
+                # A fallback executor succeeded
+                if self._telemetry is not None:
+                    try:
+                        self._telemetry.record(
+                            "fallback",
+                            {
+                                "failed_backends": failed_backends,
+                                "succeeded_backend": result.backend,
+                            },
+                        )
+                    except Exception:
+                        logger.warning(
+                            "Telemetry recording failed",
+                            exc_info=True,
+                        )
+                note = self._resolve_notification()
+                if note is not None:
+                    if self._notification_callback is not None:
+                        self._notification_callback(note)
+                    result = ExecutorResult(
+                        content=f"{note}\n\n{result.content}",
+                        backend=result.backend,
+                    )
+            return result
         raise last_exc  # type: ignore[misc]
