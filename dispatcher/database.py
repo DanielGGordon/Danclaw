@@ -3,9 +3,16 @@
 Provides ``init_db`` — an async function that creates the core tables
 (sessions, messages, channel_bindings) using ``CREATE TABLE IF NOT EXISTS``
 so it is safe to call on every startup.
+
+Provides ``connect`` — an async context-manager that opens a connection with
+``PRAGMA foreign_keys = ON`` so referential integrity is enforced on every
+connection, not just the one used for schema creation.
 """
 
 from __future__ import annotations
+
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
 
 import aiosqlite
 
@@ -55,5 +62,17 @@ async def init_db(db_path: str) -> None:
     """
     async with aiosqlite.connect(db_path) as db:
         await db.executescript(_SCHEMA_SQL)
-        await db.execute("PRAGMA foreign_keys = ON")
         await db.commit()
+
+
+@asynccontextmanager
+async def connect(db_path: str) -> AsyncIterator[aiosqlite.Connection]:
+    """Open a connection to *db_path* with foreign-key enforcement enabled.
+
+    ``PRAGMA foreign_keys`` is a per-connection setting in SQLite and
+    defaults to OFF.  Use this helper instead of ``aiosqlite.connect``
+    to ensure referential integrity is always enforced.
+    """
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("PRAGMA foreign_keys = ON")
+        yield db
