@@ -30,6 +30,7 @@ danclaw/
 │   ├── dispatcher.py         # Core Dispatcher class: routes messages through session → executor → storage pipeline
 │   ├── executor.py           # AI executor protocol, ExecutorResult, and MockExecutor (canned responses)
 │   ├── models.py             # StandardMessage frozen dataclass with serialization helpers
+│   ├── permissions.py        # Permission resolver: computes effective tool sets for channel + user pairs
 │   ├── repository.py         # Async repository abstraction for all DB access (CRUD on sessions, messages, channel_bindings)
 │   ├── session_manager.py    # High-level session lifecycle manager (get-or-create, state transitions, active listing)
 │   ├── socket_server.py      # Asyncio Unix domain socket server accepting newline-delimited JSON (StandardMessage)

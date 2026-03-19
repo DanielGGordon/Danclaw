@@ -118,7 +118,7 @@ The three-layer permission resolver. Channel permissions define the baseline. Us
 ### Acceptance criteria
 
 - [x] Permission definitions in JSON config: per-channel (tools, override flag), per-user (additional tools)
-- [ ] Permission resolver: given a channel + user, compute the effective permission set
+- [x] Permission resolver: given a channel + user, compute the effective permission set
 - [ ] Override flag: when true, user permissions are ignored — only channel permissions apply
 - [ ] Approval gates: configurable per channel/persona/user — when enabled, high-impact actions require confirmation
 - [ ] Dispatcher checks permissions before invoking an agent — blocked requests return an error message to the user
