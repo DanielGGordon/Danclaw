@@ -11,7 +11,14 @@ The core routing and orchestration process. Accepts `StandardMessage` objects fr
   - Messages: `save_message`, `get_messages_for_session`
   - Channel bindings: `add_channel_binding`, `remove_channel_binding`, `get_bindings_for_session`, `find_session_by_channel`
 - Row dataclasses: `SessionRow` (includes `attribution` field), `MessageRow`, `ChannelBindingRow`, `TelemetryEventRow` — frozen dataclasses for type-safe query results.
-  - Repository also provides telemetry methods: `save_telemetry_event(event_type, payload, timestamp, *, session_id=None, source=None, status="ok")` and `get_telemetry_events(event_type=None)`.
+  - Repository also provides telemetry methods:
+    - `save_telemetry_event(event_type, payload, timestamp, *, session_id=None, source=None, status="ok")` — insert a telemetry event
+    - `get_telemetry_events(event_type=None)` — return all events, optionally filtered by type
+    - `get_telemetry_event(event_id)` — return a single event by ID (or None)
+    - `query_telemetry_events(*, event_type=None, session_id=None, source=None, status=None, since=None, until=None, limit=None, offset=0, order="asc")` — flexible query with filtering, time ranges, pagination, and sort order
+    - `count_telemetry_events(*, event_type=None, session_id=None, source=None, status=None, since=None, until=None)` — count events matching filters (for pagination)
+    - `get_distinct_event_types()` — list all distinct event_type values
+    - `get_distinct_sources()` — list all distinct non-null source values
 - `SessionManager(repo)` — high-level session lifecycle manager wrapping the repository. Methods:
   - `get_or_create_session(message, agent_name)` — finds a live session by explicit ID or channel binding, or creates a new one
   - `get_session(session_id)` — retrieves a session by ID

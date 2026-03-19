@@ -450,19 +450,164 @@ class Repository:
 
         async with self._db.execute(sql, params) as cur:
             rows = await cur.fetchall()
-        return [
-            TelemetryEventRow(
-                id=r[0],
-                event_type=r[1],
-                payload=json.loads(r[2]),
-                timestamp=r[3],
-                created_at=r[4],
-                session_id=r[5],
-                source=r[6],
-                status=r[7],
+        return [_telemetry_row_from_tuple(r) for r in rows]
+
+    async def get_telemetry_event(self, event_id: int) -> Optional[TelemetryEventRow]:
+        """Return a single telemetry event by ID, or ``None`` if not found."""
+        async with self._db.execute(
+            "SELECT id, event_type, payload, timestamp, created_at, "
+            "session_id, source, status "
+            "FROM telemetry_events WHERE id = ?",
+            (event_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            return None
+        return _telemetry_row_from_tuple(row)
+
+    async def query_telemetry_events(
+        self,
+        *,
+        event_type: Optional[str] = None,
+        session_id: Optional[str] = None,
+        source: Optional[str] = None,
+        status: Optional[str] = None,
+        since: Optional[float] = None,
+        until: Optional[float] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
+        order: str = "asc",
+    ) -> list[TelemetryEventRow]:
+        """Query telemetry events with flexible filtering and pagination.
+
+        Parameters
+        ----------
+        event_type:
+            Filter by event type (exact match).
+        session_id:
+            Filter by session ID (exact match).
+        source:
+            Filter by source channel (exact match).
+        status:
+            Filter by status (exact match).
+        since:
+            Only events with timestamp >= this value (Unix epoch).
+        until:
+            Only events with timestamp <= this value (Unix epoch).
+        limit:
+            Maximum number of rows to return.  ``None`` means no limit.
+        offset:
+            Number of rows to skip (for pagination).  Defaults to 0.
+        order:
+            Sort direction for timestamp: ``"asc"`` (default) or ``"desc"``.
+
+        Raises
+        ------
+        ValueError:
+            If *order* is not ``"asc"`` or ``"desc"``.
+        """
+        if order not in ("asc", "desc"):
+            raise ValueError(
+                f"Invalid order {order!r}. Must be 'asc' or 'desc'"
             )
-            for r in rows
-        ]
+
+        conditions: list[str] = []
+        params: list[Any] = []
+
+        if event_type is not None:
+            conditions.append("event_type = ?")
+            params.append(event_type)
+        if session_id is not None:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+        if source is not None:
+            conditions.append("source = ?")
+            params.append(source)
+        if status is not None:
+            conditions.append("status = ?")
+            params.append(status)
+        if since is not None:
+            conditions.append("timestamp >= ?")
+            params.append(since)
+        if until is not None:
+            conditions.append("timestamp <= ?")
+            params.append(until)
+
+        where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+        direction = "ASC" if order == "asc" else "DESC"
+        sql = (
+            "SELECT id, event_type, payload, timestamp, created_at, "
+            f"session_id, source, status FROM telemetry_events{where} "
+            f"ORDER BY timestamp {direction}, id {direction}"
+        )
+        if limit is not None:
+            sql += f" LIMIT {int(limit)} OFFSET {int(offset)}"
+        elif offset:
+            sql += f" LIMIT -1 OFFSET {int(offset)}"
+
+        async with self._db.execute(sql, tuple(params)) as cur:
+            rows = await cur.fetchall()
+        return [_telemetry_row_from_tuple(r) for r in rows]
+
+    async def count_telemetry_events(
+        self,
+        *,
+        event_type: Optional[str] = None,
+        session_id: Optional[str] = None,
+        source: Optional[str] = None,
+        status: Optional[str] = None,
+        since: Optional[float] = None,
+        until: Optional[float] = None,
+    ) -> int:
+        """Count telemetry events matching the given filters.
+
+        Accepts the same filter parameters as :meth:`query_telemetry_events`.
+        """
+        conditions: list[str] = []
+        params: list[Any] = []
+
+        if event_type is not None:
+            conditions.append("event_type = ?")
+            params.append(event_type)
+        if session_id is not None:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+        if source is not None:
+            conditions.append("source = ?")
+            params.append(source)
+        if status is not None:
+            conditions.append("status = ?")
+            params.append(status)
+        if since is not None:
+            conditions.append("timestamp >= ?")
+            params.append(since)
+        if until is not None:
+            conditions.append("timestamp <= ?")
+            params.append(until)
+
+        where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+        sql = f"SELECT COUNT(*) FROM telemetry_events{where}"
+
+        async with self._db.execute(sql, tuple(params)) as cur:
+            row = await cur.fetchone()
+        return row[0]
+
+    async def get_distinct_event_types(self) -> list[str]:
+        """Return all distinct event_type values, sorted alphabetically."""
+        async with self._db.execute(
+            "SELECT DISTINCT event_type FROM telemetry_events ORDER BY event_type"
+        ) as cur:
+            rows = await cur.fetchall()
+        return [r[0] for r in rows]
+
+    async def get_distinct_sources(self) -> list[str]:
+        """Return all distinct non-null source values, sorted alphabetically."""
+        async with self._db.execute(
+            "SELECT DISTINCT source FROM telemetry_events "
+            "WHERE source IS NOT NULL ORDER BY source"
+        ) as cur:
+            rows = await cur.fetchall()
+        return [r[0] for r in rows]
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -470,3 +615,17 @@ class Repository:
 def _utcnow() -> str:
     """Return the current UTC time as an ISO-8601 string."""
     return datetime.now(timezone.utc).isoformat()
+
+
+def _telemetry_row_from_tuple(r: tuple) -> TelemetryEventRow:
+    """Convert a raw DB tuple to a :class:`TelemetryEventRow`."""
+    return TelemetryEventRow(
+        id=r[0],
+        event_type=r[1],
+        payload=json.loads(r[2]),
+        timestamp=r[3],
+        created_at=r[4],
+        session_id=r[5],
+        source=r[6],
+        status=r[7],
+    )
