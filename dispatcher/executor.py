@@ -389,17 +389,6 @@ class FallbackExecutor:
                 result = await executor.execute(
                     message, persona=persona, allowed_tools=allowed_tools,
                 )
-                if idx > 0:
-                    # A fallback executor succeeded
-                    note = self._resolve_notification()
-                    if note is not None:
-                        if self._notification_callback is not None:
-                            self._notification_callback(note)
-                        result = ExecutorResult(
-                            content=f"{note}\n\n{result.content}",
-                            backend=result.backend,
-                        )
-                return result
             except Exception as exc:
                 logger.warning(
                     "Executor %s failed: %s; trying next fallback",
@@ -407,4 +396,16 @@ class FallbackExecutor:
                     exc,
                 )
                 last_exc = exc
+                continue
+            if idx > 0:
+                # A fallback executor succeeded
+                note = self._resolve_notification()
+                if note is not None:
+                    if self._notification_callback is not None:
+                        self._notification_callback(note)
+                    result = ExecutorResult(
+                        content=f"{note}\n\n{result.content}",
+                        backend=result.backend,
+                    )
+            return result
         raise last_exc  # type: ignore[misc]
