@@ -153,42 +153,86 @@ class SlackListener:
             content=text,
         )
 
+    @staticmethod
+    def _thread_ts_for_reply(event: dict) -> str:
+        """Return the ``thread_ts`` to use when replying to *event*.
+
+        If the event already belongs to a thread, use the existing
+        ``thread_ts``.  Otherwise start a new thread anchored at the
+        message's own ``ts``.
+        """
+        return event.get("thread_ts") or event.get("ts", "")
+
     def _handle_message(self, event: dict, say) -> None:
         """Handle a Slack message event.
 
         Converts to StandardMessage and sends to dispatcher via Unix socket.
         DMs (channel_type == "im") are processed directly; channel messages
         require an explicit @mention (handled by ``_handle_app_mention``).
+
+        If the dispatcher returns a response, replies in the same thread
+        (or creates one for top-level messages).
         """
         msg = self.message_to_standard(event)
         if msg is None:
             return
 
         try:
-            self._send_to_dispatcher(msg)
+            response = self._send_to_dispatcher(msg)
         except Exception:
             logger.exception("Failed to send message to dispatcher")
+            return
+
+        self._reply_in_thread(response, event, say)
 
     def _handle_app_mention(self, event: dict, say) -> None:
         """Handle an ``app_mention`` event.
 
         Strips the leading ``<@BOT_ID>`` from the text and forwards the
-        cleaned message to the dispatcher.
+        cleaned message to the dispatcher.  Replies in the same thread
+        (or creates one for top-level mentions).
         """
         msg = self.message_to_standard(event, should_strip_mention=True)
         if msg is None:
             return
 
         try:
-            self._send_to_dispatcher(msg)
+            response = self._send_to_dispatcher(msg)
         except Exception:
             logger.exception("Failed to send mention to dispatcher")
+            return
 
-    def _send_to_dispatcher(self, message: StandardMessage) -> None:
+        self._reply_in_thread(response, event, say)
+
+    def _reply_in_thread(
+        self,
+        response: Optional[dict],
+        event: dict,
+        say,
+    ) -> None:
+        """Post the dispatcher *response* as a threaded reply.
+
+        Does nothing when *response* is ``None`` or contains no ``content``
+        field.
+        """
+        if not response:
+            return
+
+        content = response.get("content")
+        if not content:
+            return
+
+        thread_ts = self._thread_ts_for_reply(event)
+        say(text=content, thread_ts=thread_ts)
+
+    def _send_to_dispatcher(self, message: StandardMessage) -> Optional[dict]:
         """Send a StandardMessage to the dispatcher over the Unix socket.
 
         Uses a synchronous socket connection since slack-bolt's event
         handlers run in threads.
+
+        Returns the dispatcher's response dict, or ``None`` if no response
+        was received.
         """
         payload = json.dumps(message.to_dict()) + "\n"
 
@@ -208,6 +252,9 @@ class SlackListener:
             if data:
                 response = json.loads(data.decode("utf-8").strip())
                 logger.debug("Dispatcher response: %s", response)
+                return response
+
+        return None
 
     def start(self) -> None:
         """Start the Slack listener in Socket Mode (blocking).
