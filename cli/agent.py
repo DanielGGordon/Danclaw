@@ -281,6 +281,14 @@ def attach(
         else:
             print_fn(f"Session {session_id} has no messages.\n")
 
+        session_state = resp.get("state", "")
+        if session_state not in ("ACTIVE", "WAITING_FOR_HUMAN"):
+            print_fn(
+                f"Session {session_id} is in state {session_state!r} "
+                f"and cannot accept new messages."
+            )
+            return
+
         print_fn('Type a message and press Enter. Type "exit" or press Ctrl+C to quit.\n')
         _chat_loop(
             sock,

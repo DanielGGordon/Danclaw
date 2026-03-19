@@ -188,6 +188,7 @@ class SocketServer:
         return json.dumps({
             "ok": True,
             "session_id": session_id,
+            "state": session.state,
             "messages": [
                 {
                     "role": m.role,
