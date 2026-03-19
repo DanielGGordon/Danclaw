@@ -32,7 +32,7 @@
       },
       "admin": {
         "allowed_tools": ["git", "obsidian", "deploy", "git_ops"],
-        "override": false,
+        "override": true,
         "approval_required": false
       }
     },

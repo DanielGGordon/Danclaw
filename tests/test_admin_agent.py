@@ -75,7 +75,7 @@ def _admin_config(**overrides) -> dict:
             "channels": {
                 "admin": {
                     "allowed_tools": ["git", "obsidian", "deploy", "git_ops"],
-                    "override": False,
+                    "override": True,
                     "approval_required": False,
                 },
             },
@@ -167,7 +167,7 @@ class TestAdminChannelPermissions:
             channels={
                 "admin": ChannelPermissions(
                     allowed_tools=["git", "obsidian", "deploy", "git_ops"],
-                    override=False,
+                    override=True,
                     approval_required=False,
                 ),
             },
@@ -179,7 +179,7 @@ class TestAdminChannelPermissions:
             channels={
                 "admin": ChannelPermissions(
                     allowed_tools=["git", "obsidian", "deploy", "git_ops"],
-                    override=False,
+                    override=True,
                     approval_required=False,
                 ),
             },
@@ -191,7 +191,7 @@ class TestAdminChannelPermissions:
             channels={
                 "admin": ChannelPermissions(
                     allowed_tools=["git", "obsidian", "deploy", "git_ops"],
-                    override=False,
+                    override=True,
                     approval_required=False,
                 ),
             },
@@ -199,13 +199,13 @@ class TestAdminChannelPermissions:
         tools = resolve_permissions(config, "admin", "unknown-user")
         assert tools == frozenset({"git", "obsidian", "deploy", "git_ops"})
 
-    def test_admin_channel_user_tools_additive(self) -> None:
-        """User permissions add to admin channel since override=False."""
+    def test_admin_channel_user_tools_not_additive(self) -> None:
+        """User permissions are ignored on admin channel since override=True."""
         config = PermissionsConfig(
             channels={
                 "admin": ChannelPermissions(
                     allowed_tools=["git", "obsidian", "deploy", "git_ops"],
-                    override=False,
+                    override=True,
                     approval_required=False,
                 ),
             },
@@ -214,28 +214,26 @@ class TestAdminChannelPermissions:
             },
         )
         tools = resolve_permissions(config, "admin", "dan")
-        assert "extra_tool" in tools
+        assert "extra_tool" not in tools
         assert "git" in tools
 
-    def test_admin_channel_user_approval_ignored_when_channel_false(self) -> None:
-        """Even if user has approval_required, admin channel does not override it.
+    def test_admin_channel_user_approval_ignored(self) -> None:
+        """Even if user has approval_required=True, admin channel ignores it.
 
-        When override=False, user approval IS considered.  So if a user
-        has approval_required=True on a non-override channel, approval
-        is required.  This tests that the admin channel itself does not
-        set approval_required.
+        Because override=True, user approval flags are not considered.
         """
         config = PermissionsConfig(
             channels={
                 "admin": ChannelPermissions(
                     allowed_tools=["git"],
-                    override=False,
+                    override=True,
                     approval_required=False,
                 ),
             },
-            users={},
+            users={
+                "someone": UserPermissions(approval_required=True),
+            },
         )
-        # No user approval, no channel approval → False
         assert requires_approval(config, "admin", "someone") is False
 
     def test_admin_channel_loaded_from_config(self, tmp_project) -> None:
@@ -248,7 +246,7 @@ class TestAdminChannelPermissions:
         admin_ch = cfg.permissions.channels.get("admin")
         assert admin_ch is not None
         assert admin_ch.approval_required is False
-        assert admin_ch.override is False
+        assert admin_ch.override is True
         assert set(admin_ch.allowed_tools) == {"git", "obsidian", "deploy", "git_ops"}
 
 
@@ -268,7 +266,7 @@ class TestNonAdminStillRestricted:
                 ),
                 "admin": ChannelPermissions(
                     allowed_tools=["git", "obsidian", "deploy", "git_ops"],
-                    override=False,
+                    override=True,
                     approval_required=False,
                 ),
             },
@@ -285,7 +283,7 @@ class TestNonAdminStillRestricted:
                 ),
                 "admin": ChannelPermissions(
                     allowed_tools=["git", "obsidian", "deploy", "git_ops"],
-                    override=False,
+                    override=True,
                 ),
             },
             users={
@@ -296,7 +294,7 @@ class TestNonAdminStillRestricted:
         admin_tools = resolve_permissions(config, "admin", "dan")
         # Slack override=True: user tools excluded
         assert slack_tools == frozenset({"obsidian"})
-        # Admin override=False: user tools included
+        # Admin override=True: only channel tools, but deploy is already listed
         assert "deploy" in admin_tools
 
 
