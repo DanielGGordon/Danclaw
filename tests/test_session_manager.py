@@ -133,6 +133,46 @@ async def test_ignores_explicit_id_if_nonexistent(mgr):
     assert session.id != "nonexistent-id"
 
 
+# ── get_or_create_session: attach adds channel binding ────────────────
+
+@pytest.mark.asyncio
+async def test_explicit_id_adds_binding_for_new_channel(mgr, repo):
+    """When attaching via explicit session_id from a new terminal,
+    a channel binding is created for the new channel_ref."""
+    s1 = await mgr.get_or_create_session(_msg(channel_ref="tty1"), "agent")
+    # Simulate 'agent attach' from a different terminal
+    msg = _msg(channel_ref="tty2", session_id=s1.id)
+    s2 = await mgr.get_or_create_session(msg, "agent")
+    assert s2.id == s1.id
+    bindings = await repo.get_bindings_for_session(s1.id)
+    refs = {b.channel_ref for b in bindings}
+    assert refs == {"tty1", "tty2"}
+
+
+@pytest.mark.asyncio
+async def test_explicit_id_does_not_duplicate_existing_binding(mgr, repo):
+    """Re-attaching from the same channel_ref does not create a duplicate."""
+    s1 = await mgr.get_or_create_session(_msg(channel_ref="tty1"), "agent")
+    msg = _msg(channel_ref="tty1", session_id=s1.id)
+    s2 = await mgr.get_or_create_session(msg, "agent")
+    assert s2.id == s1.id
+    bindings = await repo.get_bindings_for_session(s1.id)
+    assert len(bindings) == 1
+
+
+@pytest.mark.asyncio
+async def test_attach_multiple_terminals_to_session(mgr, repo):
+    """Multiple terminals can attach to the same session."""
+    s1 = await mgr.get_or_create_session(_msg(channel_ref="tty1"), "agent")
+    for i in range(2, 5):
+        msg = _msg(channel_ref=f"tty{i}", session_id=s1.id)
+        await mgr.get_or_create_session(msg, "agent")
+    bindings = await repo.get_bindings_for_session(s1.id)
+    assert len(bindings) == 4
+    refs = {b.channel_ref for b in bindings}
+    assert refs == {"tty1", "tty2", "tty3", "tty4"}
+
+
 # ── get_or_create_session: different channels ────────────────────────
 
 @pytest.mark.asyncio
