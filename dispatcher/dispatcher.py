@@ -344,7 +344,14 @@ class Dispatcher:
                 "error": str(exc),
                 "error_type": type(exc).__name__,
             }, session_id=session_id, source=message.source, status="error")
-            await self._session_manager.update_state(session_id, "ERROR")
+            try:
+                await self._session_manager.update_state(session_id, "ERROR")
+            except Exception:
+                logger.warning(
+                    "Failed to transition session %s to ERROR state",
+                    session_id,
+                    exc_info=True,
+                )
             self._emit("session_state_changed", {
                 "session_id": session_id,
                 "from_state": "ACTIVE",
