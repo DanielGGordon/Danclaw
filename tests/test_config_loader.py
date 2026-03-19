@@ -12,6 +12,7 @@ from config.loader import (
     ConfigError,
     DanClawConfig,
     ObsidianToolConfig,
+    TelemetryConfig,
     ToolsConfig,
     load_config,
     validate_config,
@@ -886,3 +887,146 @@ class TestToolsConfig:
         )
         with pytest.raises(AttributeError):
             cfg.tools = ToolsConfig()
+
+
+# ── Telemetry config ─────────────────────────────────────────────────
+
+
+class TestTelemetryConfig:
+    """Tests for the telemetry configuration section."""
+
+    def test_telemetry_defaults_when_omitted(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "default",
+                "persona": "default",
+                "backend_preference": ["claude"],
+            }],
+        })
+        cfg = load_config(
+            tmp_project.config / "danclaw.json",
+            personas_dir=tmp_project.personas,
+            tools_dir=tmp_project.tools,
+        )
+        assert cfg.telemetry == TelemetryConfig()
+        assert cfg.telemetry.slack_log_channel is None
+
+    def test_telemetry_empty_object_is_valid(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "default",
+                "persona": "default",
+                "backend_preference": ["claude"],
+            }],
+            "telemetry": {},
+        })
+        cfg = load_config(
+            tmp_project.config / "danclaw.json",
+            personas_dir=tmp_project.personas,
+            tools_dir=tmp_project.tools,
+        )
+        assert cfg.telemetry.slack_log_channel is None
+
+    def test_telemetry_slack_log_channel_loaded(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "default",
+                "persona": "default",
+                "backend_preference": ["claude"],
+            }],
+            "telemetry": {
+                "slack_log_channel": "C0123456789",
+            },
+        })
+        cfg = load_config(
+            tmp_project.config / "danclaw.json",
+            personas_dir=tmp_project.personas,
+            tools_dir=tmp_project.tools,
+        )
+        assert cfg.telemetry.slack_log_channel == "C0123456789"
+
+    def test_telemetry_not_a_dict_raises_config_error(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "default",
+                "persona": "default",
+                "backend_preference": ["claude"],
+            }],
+            "telemetry": "bad",
+        })
+        with pytest.raises(ConfigError, match="'telemetry' must be a JSON object"):
+            load_config(
+                tmp_project.config / "danclaw.json",
+                personas_dir=tmp_project.personas,
+                tools_dir=tmp_project.tools,
+            )
+
+    def test_slack_log_channel_empty_string_raises_config_error(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "default",
+                "persona": "default",
+                "backend_preference": ["claude"],
+            }],
+            "telemetry": {"slack_log_channel": ""},
+        })
+        with pytest.raises(ConfigError, match="slack_log_channel.*non-empty string"):
+            load_config(
+                tmp_project.config / "danclaw.json",
+                personas_dir=tmp_project.personas,
+                tools_dir=tmp_project.tools,
+            )
+
+    def test_slack_log_channel_non_string_raises_config_error(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "default",
+                "persona": "default",
+                "backend_preference": ["claude"],
+            }],
+            "telemetry": {"slack_log_channel": 12345},
+        })
+        with pytest.raises(ConfigError, match="slack_log_channel.*non-empty string"):
+            load_config(
+                tmp_project.config / "danclaw.json",
+                personas_dir=tmp_project.personas,
+                tools_dir=tmp_project.tools,
+            )
+
+    def test_telemetry_config_is_frozen(self):
+        tc = TelemetryConfig(slack_log_channel="C123")
+        with pytest.raises(AttributeError):
+            tc.slack_log_channel = "C456"
+
+    def test_telemetry_config_on_danclaw_config_is_frozen(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "default",
+                "persona": "default",
+                "backend_preference": ["claude"],
+            }],
+            "telemetry": {"slack_log_channel": "C123"},
+        })
+        cfg = load_config(
+            tmp_project.config / "danclaw.json",
+            personas_dir=tmp_project.personas,
+            tools_dir=tmp_project.tools,
+        )
+        with pytest.raises(AttributeError):
+            cfg.telemetry = TelemetryConfig()
+
+    def test_slack_log_channel_null_is_valid(self, tmp_project):
+        tmp_project.write_config({
+            "agents": [{
+                "name": "default",
+                "persona": "default",
+                "backend_preference": ["claude"],
+            }],
+            "telemetry": {"slack_log_channel": None},
+        })
+        cfg = load_config(
+            tmp_project.config / "danclaw.json",
+            personas_dir=tmp_project.personas,
+            tools_dir=tmp_project.tools,
+        )
+        assert cfg.telemetry.slack_log_channel is None

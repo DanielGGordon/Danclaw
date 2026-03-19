@@ -26,6 +26,7 @@ from dispatcher.executor import MockExecutor
 from dispatcher.repository import Repository
 from dispatcher.session_manager import SessionManager
 from dispatcher.socket_server import SocketServer
+from dispatcher.telemetry import SlackLogSink, TelemetryCollector
 
 logger = logging.getLogger("dispatcher")
 
@@ -78,6 +79,20 @@ async def _run(
         agent_names,
     )
 
+    # Build telemetry collector with configured sinks
+    telemetry = TelemetryCollector()
+    if config.telemetry.slack_log_channel:
+        from slack_sdk import WebClient
+
+        slack_token = os.environ.get("SLACK_BOT_TOKEN", "")
+        slack_client = WebClient(token=slack_token)
+        slack_sink = SlackLogSink(slack_client, config.telemetry.slack_log_channel)
+        telemetry.add_sink(slack_sink)
+        logger.info(
+            "SlackLogSink enabled for channel %s",
+            config.telemetry.slack_log_channel,
+        )
+
     # Initialise database schema
     await init_db(db_path)
     logger.info("Database initialised at %s", db_path)
@@ -90,7 +105,7 @@ async def _run(
         repo = Repository(db)
         session_manager = SessionManager(repo)
         executor = MockExecutor()
-        dispatcher = Dispatcher(session_manager, repo, executor, config=config)
+        dispatcher = Dispatcher(session_manager, repo, executor, config=config, telemetry=telemetry)
         server = SocketServer(dispatcher, socket_path)
 
         # Start the socket server
