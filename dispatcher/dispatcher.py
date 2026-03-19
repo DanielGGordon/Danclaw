@@ -118,7 +118,14 @@ class Dispatcher:
             logger.exception(
                 "Executor failed for session %s", session_id,
             )
-            await self._session_manager.update_state(session_id, "ERROR")
+            try:
+                await self._session_manager.update_state(session_id, "ERROR")
+            except Exception:
+                logger.warning(
+                    "Failed to transition session %s to ERROR state",
+                    session_id,
+                    exc_info=True,
+                )
             raise
 
         # 4. Store response
