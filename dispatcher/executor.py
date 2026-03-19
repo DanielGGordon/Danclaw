@@ -36,6 +36,7 @@ class Executor(Protocol):
         message: StandardMessage,
         *,
         persona: str | None = None,
+        allowed_tools: frozenset[str] | None = None,
     ) -> ExecutorResult:
         """Process *message* and return an ExecutorResult.
 
@@ -47,6 +48,9 @@ class Executor(Protocol):
             Optional persona content (markdown) to guide the executor's
             behaviour.  Loaded from the agent's persona file by the
             dispatcher before calling execute.
+        allowed_tools:
+            The resolved set of tools the user is allowed to use on this
+            channel.  The executor should restrict tool access to this set.
         """
         ...  # pragma: no cover
 
@@ -59,7 +63,8 @@ class MockExecutor:
     construction time instead.
 
     The most recently received persona is stored in :attr:`last_persona`
-    so tests can verify it was passed through correctly.
+    and the most recently received allowed_tools in :attr:`last_allowed_tools`
+    so tests can verify they were passed through correctly.
 
     Parameters:
         fixed_response: If provided, every call returns this exact string
@@ -69,15 +74,18 @@ class MockExecutor:
     def __init__(self, fixed_response: str | None = None) -> None:
         self._fixed_response = fixed_response
         self.last_persona: str | None = None
+        self.last_allowed_tools: frozenset[str] | None = None
 
     async def execute(
         self,
         message: StandardMessage,
         *,
         persona: str | None = None,
+        allowed_tools: frozenset[str] | None = None,
     ) -> ExecutorResult:
         """Return a canned response for *message*."""
         self.last_persona = persona
+        self.last_allowed_tools = allowed_tools
         if self._fixed_response is not None:
             content = self._fixed_response
         else:

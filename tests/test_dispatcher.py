@@ -12,7 +12,13 @@ from dispatcher.database import _SCHEMA_SQL
 from dispatcher.dispatcher import Dispatcher, DispatchResult
 from dispatcher.executor import ExecutorResult, MockExecutor
 from dispatcher.models import StandardMessage
-from config import AgentConfig, DanClawConfig
+from config import (
+    AgentConfig,
+    ChannelPermissions,
+    DanClawConfig,
+    PermissionsConfig,
+    UserPermissions,
+)
 from dispatcher.repository import Repository
 from dispatcher.session_manager import SessionManager
 from tests.conftest import make_config, make_personas_dir
@@ -162,6 +168,7 @@ class _FailingExecutor:
         message: StandardMessage,
         *,
         persona: str | None = None,
+        allowed_tools: frozenset[str] | None = None,
     ) -> ExecutorResult:
         raise RuntimeError("backend crashed")
 
@@ -584,3 +591,243 @@ async def test_switch_then_switch_back(mgr, repo, tmp_path):
         (await dispatcher.dispatch(_msg(content="check"))).session_id
     )
     assert session.agent_name == "alpha"
+
+
+# ── Permission resolution in dispatch ─────────────────────────────────
+
+
+def _config_with_permissions(
+    agent_name: str = "test-agent",
+    permissions: PermissionsConfig | None = None,
+) -> DanClawConfig:
+    """Build a config with a single agent and custom permissions."""
+    return DanClawConfig(
+        agents=[
+            AgentConfig(
+                name=agent_name,
+                persona="default",
+                backend_preference=["claude"],
+                allowed_tools=["tool_a", "tool_b"],
+            ),
+        ],
+        permissions=permissions or PermissionsConfig(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_resolves_permissions_for_channel_and_user(mgr, repo, personas_dir):
+    """Dispatcher resolves the effective permissions and stores them."""
+    perms = PermissionsConfig(
+        channels={"terminal": ChannelPermissions(allowed_tools=["read_file", "write_file"])},
+        users={"u1": UserPermissions(additional_tools=["deploy"])},
+    )
+    config = _config_with_permissions(permissions=perms)
+    executor = MockExecutor()
+    dispatcher = Dispatcher(
+        mgr, repo, executor, config=config, personas_dir=personas_dir,
+    )
+    await dispatcher.dispatch(_msg(source="terminal", user_id="u1"))
+    assert dispatcher._last_resolved_permissions == frozenset(
+        {"read_file", "write_file", "deploy"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_passes_allowed_tools_to_executor(mgr, repo, personas_dir):
+    """The resolved permissions are passed to the executor as allowed_tools."""
+    perms = PermissionsConfig(
+        channels={"terminal": ChannelPermissions(allowed_tools=["read_file"])},
+    )
+    config = _config_with_permissions(permissions=perms)
+    executor = MockExecutor()
+    dispatcher = Dispatcher(
+        mgr, repo, executor, config=config, personas_dir=personas_dir,
+    )
+    await dispatcher.dispatch(_msg(source="terminal", user_id="u1"))
+    assert executor.last_allowed_tools == frozenset({"read_file"})
+
+
+@pytest.mark.asyncio
+async def test_dispatch_empty_permissions_passes_empty_set(mgr, repo, personas_dir):
+    """When no permissions are configured, executor gets an empty frozenset."""
+    config = _config_with_permissions()
+    executor = MockExecutor()
+    dispatcher = Dispatcher(
+        mgr, repo, executor, config=config, personas_dir=personas_dir,
+    )
+    await dispatcher.dispatch(_msg(source="unknown_channel", user_id="unknown_user"))
+    assert executor.last_allowed_tools == frozenset()
+
+
+@pytest.mark.asyncio
+async def test_dispatch_override_channel_ignores_user_tools(mgr, repo, personas_dir):
+    """When the channel has override=True, user tools are not included."""
+    perms = PermissionsConfig(
+        channels={"locked": ChannelPermissions(
+            allowed_tools=["safe_tool"],
+            override=True,
+        )},
+        users={"u1": UserPermissions(additional_tools=["dangerous_tool"])},
+    )
+    config = _config_with_permissions(permissions=perms)
+    executor = MockExecutor()
+    dispatcher = Dispatcher(
+        mgr, repo, executor, config=config, personas_dir=personas_dir,
+    )
+    await dispatcher.dispatch(_msg(source="locked", user_id="u1"))
+    assert executor.last_allowed_tools == frozenset({"safe_tool"})
+    assert "dangerous_tool" not in executor.last_allowed_tools
+
+
+# ── Approval gate ─────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_dispatch_approval_required_sets_waiting_state(mgr, repo, personas_dir):
+    """When approval is required, session is set to WAITING_FOR_HUMAN."""
+    perms = PermissionsConfig(
+        channels={"slack": ChannelPermissions(
+            allowed_tools=["deploy"],
+            approval_required=True,
+        )},
+    )
+    config = _config_with_permissions(permissions=perms)
+    executor = MockExecutor()
+    dispatcher = Dispatcher(
+        mgr, repo, executor, config=config, personas_dir=personas_dir,
+    )
+    result = await dispatcher.dispatch(_msg(source="slack", user_id="u1"))
+
+    # Session should be WAITING_FOR_HUMAN
+    session = await mgr.get_session(result.session_id)
+    assert session.state == "WAITING_FOR_HUMAN"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_approval_required_returns_approval_message(mgr, repo, personas_dir):
+    """When approval is required, the response asks for human approval."""
+    perms = PermissionsConfig(
+        channels={"slack": ChannelPermissions(
+            allowed_tools=["deploy"],
+            approval_required=True,
+        )},
+    )
+    config = _config_with_permissions(permissions=perms)
+    executor = MockExecutor()
+    dispatcher = Dispatcher(
+        mgr, repo, executor, config=config, personas_dir=personas_dir,
+    )
+    result = await dispatcher.dispatch(_msg(source="slack", user_id="u1"))
+
+    assert "approval" in result.response.lower()
+    assert result.backend == "system"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_approval_required_does_not_call_executor(mgr, repo, personas_dir):
+    """When approval is required, the executor should NOT be called."""
+    perms = PermissionsConfig(
+        channels={"slack": ChannelPermissions(
+            allowed_tools=["deploy"],
+            approval_required=True,
+        )},
+    )
+    config = _config_with_permissions(permissions=perms)
+    executor = MockExecutor()
+    dispatcher = Dispatcher(
+        mgr, repo, executor, config=config, personas_dir=personas_dir,
+    )
+    await dispatcher.dispatch(_msg(source="slack", user_id="u1"))
+
+    # MockExecutor's last_persona is set only when execute() is called
+    assert executor.last_persona is None
+    assert executor.last_allowed_tools is None
+
+
+@pytest.mark.asyncio
+async def test_dispatch_approval_stores_user_message_and_approval_response(
+    mgr, repo, personas_dir,
+):
+    """When approval is required, both user message and approval response are stored."""
+    perms = PermissionsConfig(
+        channels={"slack": ChannelPermissions(
+            allowed_tools=["deploy"],
+            approval_required=True,
+        )},
+    )
+    config = _config_with_permissions(permissions=perms)
+    dispatcher = Dispatcher(
+        mgr, repo, MockExecutor(), config=config, personas_dir=personas_dir,
+    )
+    result = await dispatcher.dispatch(_msg(source="slack", user_id="u1", content="do deploy"))
+
+    messages = await repo.get_messages_for_session(result.session_id)
+    assert len(messages) == 2
+    assert messages[0].role == "user"
+    assert messages[0].content == "do deploy"
+    assert messages[1].role == "assistant"
+    assert "approval" in messages[1].content.lower()
+
+
+@pytest.mark.asyncio
+async def test_dispatch_user_approval_required(mgr, repo, personas_dir):
+    """When user-level approval_required is True, session waits for approval."""
+    perms = PermissionsConfig(
+        channels={"terminal": ChannelPermissions(allowed_tools=["read_file"])},
+        users={"risky_user": UserPermissions(
+            additional_tools=["deploy"],
+            approval_required=True,
+        )},
+    )
+    config = _config_with_permissions(permissions=perms)
+    executor = MockExecutor()
+    dispatcher = Dispatcher(
+        mgr, repo, executor, config=config, personas_dir=personas_dir,
+    )
+    result = await dispatcher.dispatch(_msg(source="terminal", user_id="risky_user"))
+
+    session = await mgr.get_session(result.session_id)
+    assert session.state == "WAITING_FOR_HUMAN"
+    assert result.backend == "system"
+    assert executor.last_persona is None  # executor was not called
+
+
+@pytest.mark.asyncio
+async def test_dispatch_no_approval_required_proceeds_normally(mgr, repo, personas_dir):
+    """When no approval is required, dispatch proceeds to executor normally."""
+    perms = PermissionsConfig(
+        channels={"terminal": ChannelPermissions(allowed_tools=["read_file"])},
+    )
+    config = _config_with_permissions(permissions=perms)
+    executor = MockExecutor()
+    dispatcher = Dispatcher(
+        mgr, repo, executor, config=config, personas_dir=personas_dir,
+    )
+    result = await dispatcher.dispatch(_msg(source="terminal", user_id="u1", content="hello"))
+
+    assert result.response == "mock response: hello"
+    assert result.backend == "mock"
+    session = await mgr.get_session(result.session_id)
+    assert session.state == "ACTIVE"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_permissions_resolved_on_each_call(mgr, repo, personas_dir):
+    """Permissions are resolved fresh on each dispatch call."""
+    perms = PermissionsConfig(
+        channels={
+            "ch1": ChannelPermissions(allowed_tools=["tool_x"]),
+            "ch2": ChannelPermissions(allowed_tools=["tool_y"]),
+        },
+    )
+    config = _config_with_permissions(permissions=perms)
+    executor = MockExecutor()
+    dispatcher = Dispatcher(
+        mgr, repo, executor, config=config, personas_dir=personas_dir,
+    )
+
+    await dispatcher.dispatch(_msg(source="ch1", user_id="u1", channel_ref="ref1"))
+    assert dispatcher._last_resolved_permissions == frozenset({"tool_x"})
+
+    await dispatcher.dispatch(_msg(source="ch2", user_id="u1", channel_ref="ref2"))
+    assert dispatcher._last_resolved_permissions == frozenset({"tool_y"})

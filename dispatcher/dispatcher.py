@@ -20,6 +20,7 @@ from typing import Optional
 from config import DanClawConfig
 from dispatcher.executor import Executor, ExecutorResult
 from dispatcher.models import StandardMessage
+from dispatcher.permissions import resolve_permissions, requires_approval
 from dispatcher.repository import Repository
 from dispatcher.session_manager import SessionManager
 from personas import load_persona, PersonaError
@@ -106,6 +107,7 @@ class Dispatcher:
         self._executor = executor
         self._config = config
         self._personas_dir = personas_dir
+        self._last_resolved_permissions: frozenset[str] = frozenset()
 
     async def dispatch(self, message: StandardMessage) -> DispatchResult:
         """Route *message* through the full pipeline.
@@ -150,7 +152,22 @@ class Dispatcher:
             agent = session_agent
             agent_name = agent.name
 
-        # 3. Load persona for the resolved agent
+        # 3. Resolve permissions for the channel + user
+        allowed_tools = resolve_permissions(
+            self._config.permissions, message.source, message.user_id,
+        )
+        approval_needed = requires_approval(
+            self._config.permissions, message.source, message.user_id,
+        )
+        self._last_resolved_permissions = allowed_tools
+
+        logger.info(
+            "Resolved permissions for %s/%s: %d tools, approval=%s",
+            message.source, message.user_id,
+            len(allowed_tools), approval_needed,
+        )
+
+        # 4. Load persona for the resolved agent
         persona_content: str | None = None
         try:
             persona_content = load_persona(
@@ -164,12 +181,7 @@ class Dispatcher:
                 agent.persona, agent_name,
             )
 
-        logger.info(
-            "Dispatching message to session %s (agent=%s)",
-            session_id, agent_name,
-        )
-
-        # 4. Store inbound message
+        # 5. Store inbound message
         await self._repo.save_message(
             session_id=session_id,
             role="user",
@@ -179,10 +191,44 @@ class Dispatcher:
             user_id=message.user_id,
         )
 
-        # 5. Execute
+        # 6. Approval gate — if approval is required, pause the session
+        if approval_needed:
+            await self._session_manager.update_state(
+                session_id, "WAITING_FOR_HUMAN",
+            )
+            approval_msg = (
+                "This request requires approval before it can be executed. "
+                "A human must approve this session to continue."
+            )
+            await self._repo.save_message(
+                session_id=session_id,
+                role="assistant",
+                content=approval_msg,
+                source=message.source,
+                channel_ref=message.channel_ref,
+                user_id="system",
+            )
+            logger.info(
+                "Session %s set to WAITING_FOR_HUMAN (approval required)",
+                session_id,
+            )
+            return DispatchResult(
+                session_id=session_id,
+                response=approval_msg,
+                backend="system",
+                agent_name=agent_name,
+            )
+
+        logger.info(
+            "Dispatching message to session %s (agent=%s)",
+            session_id, agent_name,
+        )
+
+        # 7. Execute
         try:
             result: ExecutorResult = await self._executor.execute(
                 message, persona=persona_content,
+                allowed_tools=allowed_tools,
             )
         except Exception:
             logger.exception(
@@ -191,7 +237,7 @@ class Dispatcher:
             await self._session_manager.update_state(session_id, "ERROR")
             raise
 
-        # 6. Store response
+        # 8. Store response
         await self._repo.save_message(
             session_id=session_id,
             role="assistant",
@@ -206,7 +252,7 @@ class Dispatcher:
             session_id, result.backend,
         )
 
-        # 7. Return result
+        # 9. Return result
         return DispatchResult(
             session_id=session_id,
             response=result.content,

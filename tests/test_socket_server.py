@@ -306,6 +306,7 @@ async def test_dispatch_error_returns_error_response(db, socket_path):
             message: StandardMessage,
             *,
             persona: str | None = None,
+            allowed_tools: frozenset[str] | None = None,
         ) -> ExecutorResult:
             raise RuntimeError("executor exploded")
 
