@@ -70,13 +70,6 @@ async def _run(
         socket_path = DEFAULT_SOCKET_PATH
 
     config = load_config(config_path)
-    agent_count = len(config.agents)
-    agent_names = ", ".join(a.name for a in config.agents)
-    logger.info(
-        "Dispatcher ready — %d agent(s) loaded: %s",
-        agent_count,
-        agent_names,
-    )
 
     # Initialise database schema
     await init_db(db_path)
@@ -96,7 +89,11 @@ async def _run(
 
         # Start the socket server
         await server.start()
-        logger.info("Socket server listening on %s", socket_path)
+        logger.info(
+            "Dispatcher ready — %d agent(s) loaded: %s",
+            len(config.agents),
+            ", ".join(a.name for a in config.agents),
+        )
 
         # Set up signal-driven shutdown
         loop = asyncio.get_running_loop()
