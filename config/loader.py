@@ -54,12 +54,22 @@ class PermissionsConfig:
 
 @dataclass(frozen=True)
 class AgentConfig:
-    """Configuration for a single agent."""
+    """Configuration for a single agent.
+
+    Attributes:
+        name: Unique agent name.
+        persona: Name of the persona markdown file (without extension).
+        backend_preference: Ordered list of backend names to try.
+        allowed_tools: Tools this agent may use.
+        timeout: Maximum seconds an executor may run before being
+            cancelled.  Defaults to 120.
+    """
 
     name: str
     persona: str
     backend_preference: list[str]
     allowed_tools: list[str] = field(default_factory=list)
+    timeout: int = 120
 
 
 @dataclass(frozen=True)
@@ -328,6 +338,7 @@ def load_config(
         persona = agent_data["persona"]
         backend_preference = agent_data["backend_preference"]
         allowed_tools = agent_data.get("allowed_tools", [])
+        timeout = agent_data.get("timeout", 120)
 
         # Type checks
         if not isinstance(name, str) or not name:
@@ -353,6 +364,10 @@ def load_config(
                 raise ConfigError(
                     f"agents[{idx}] ({name}): 'allowed_tools' entries must be non-empty strings"
                 )
+        if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout <= 0:
+            raise ConfigError(
+                f"agents[{idx}] ({name}): 'timeout' must be a positive integer"
+            )
 
         agents.append(
             AgentConfig(
@@ -360,6 +375,7 @@ def load_config(
                 persona=persona,
                 backend_preference=list(backend_preference),
                 allowed_tools=list(allowed_tools),
+                timeout=timeout,
             )
         )
 
