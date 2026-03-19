@@ -484,9 +484,10 @@ class TestHandleMessage:
             )
 
     def test_handle_message_calls_send_to_dispatcher(self, listener):
-        """_handle_message converts and sends valid messages."""
+        """_handle_message converts and sends valid DM messages."""
         event = {
-            "channel": "C123",
+            "channel": "D123",
+            "channel_type": "im",
             "user": "U456",
             "text": "hello",
             "ts": "1234567890.123456",
@@ -500,10 +501,26 @@ class TestHandleMessage:
             assert isinstance(sent_msg, StandardMessage)
             assert sent_msg.content == "hello"
 
+    def test_handle_message_ignores_channel_messages(self, listener):
+        """_handle_message skips non-DM messages to avoid duplicate dispatch."""
+        event = {
+            "channel": "C123",
+            "channel_type": "channel",
+            "user": "U456",
+            "text": "hello",
+            "ts": "1234567890.123456",
+        }
+        say = MagicMock()
+
+        with patch.object(listener, "_send_to_dispatcher") as mock_send:
+            listener._handle_message(event, say)
+            mock_send.assert_not_called()
+
     def test_handle_message_ignores_bot_messages(self, listener):
         """_handle_message skips bot messages without sending."""
         event = {
-            "channel": "C123",
+            "channel": "D123",
+            "channel_type": "im",
             "user": "U456",
             "text": "bot message",
             "ts": "1234567890.123456",
@@ -518,7 +535,8 @@ class TestHandleMessage:
     def test_handle_message_logs_send_failure(self, listener):
         """_handle_message catches and logs dispatcher send errors."""
         event = {
-            "channel": "C123",
+            "channel": "D123",
+            "channel_type": "im",
             "user": "U456",
             "text": "hello",
             "ts": "1234567890.123456",

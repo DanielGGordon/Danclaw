@@ -160,6 +160,9 @@ class SlackListener:
         DMs (channel_type == "im") are processed directly; channel messages
         require an explicit @mention (handled by ``_handle_app_mention``).
         """
+        if event.get("channel_type") != "im":
+            return
+
         msg = self.message_to_standard(event)
         if msg is None:
             return
